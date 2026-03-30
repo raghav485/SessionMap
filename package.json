@@ -1,17 +1,50 @@
 {
   "name": "sessionmap",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "description": "Local-first codebase understanding, session tracking, MCP, and context generation for AI-assisted repositories.",
+  "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/raghav485/SessionMap#readme",
+  "bugs": {
+    "url": "https://github.com/raghav485/SessionMap/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raghav485/SessionMap.git"
+  },
+  "keywords": [
+    "sessionmap",
+    "ai",
+    "mcp",
+    "code-analysis",
+    "developer-tools",
+    "session-tracking"
+  ],
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
   "bin": {
     "sessionmap": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "grammars",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build:server": "tsc -p tsconfig.server.json",
     "build:web": "vite build --config vite.web.config.ts",
     "build": "npm run build:server && npm run build:web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "prepack": "npm run build",
+    "beta:bundle": "node scripts/create-beta-release.mjs",
+    "beta:check": "node scripts/run-vitest.mjs run --testTimeout=15000 test/release/beta-launchers.test.ts",
+    "pack:check": "node scripts/verify-pack.mjs",
+    "release:check": "npm run verify && npm run pack:check",
     "test:mcp": "npm run build && node scripts/run-vitest.mjs run --testTimeout=15000 test/mcp",
     "test": "npm run build && node scripts/run-vitest.mjs run --testTimeout=15000",
     "test:web": "npm run build && playwright test",

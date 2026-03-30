@@ -50,6 +50,31 @@
 | MCP adapter | `@modelcontextprotocol/sdk` + `zod` | Shared MCP catalog over Streamable HTTP and stdio |
 | Frontend | `vite` + vanilla TypeScript + `d3` | Small local dashboard with explicit graph rendering |
 | Tests | `vitest` + `@playwright/test` | Route/integration coverage plus one browser-level dashboard proof |
+| Distribution | npm package | First-class `npx sessionmap` and global install UX |
+
+## 2.1 Packaging And Distribution
+
+- SessionMap is packaged as an npm CLI named exactly `sessionmap`
+- The primary public invocation is `npx sessionmap <command>`
+- Persistent install uses `npm install -g sessionmap`
+- Contributor/source installs remain supported, but they are not the primary end-user path
+- `package.json` remains the source of truth for npm metadata, `bin`, publish allowlist, and pack scripts
+- The published tarball must include:
+  - `dist/**`
+  - `grammars/**`
+  - `README.md`
+  - `LICENSE`
+  - `package.json`
+- The published tarball must not depend on:
+  - `src/**`
+  - `test/**`
+  - `tasks/**`
+  - contributor-only process docs
+- Packaging verification must validate that installed-package runtime paths still resolve:
+  - `dist/cli.js`
+  - `dist/web/**`
+  - `grammars/**`
+- The initial publish workflow is manual-first and documented in `docs/RELEASE.md`
 
 ## 3. Component Design
 
@@ -131,6 +156,15 @@ src/
         ├── openai.ts
         ├── anthropic.ts
         └── google.ts
+```
+
+Docs and release support files:
+
+```
+docs/
+├── PRD.md
+├── TRD.md
+└── RELEASE.md
 ```
 
 ### 3.2 Core Types
@@ -322,6 +356,25 @@ interface DaemonManifest {
   "rules": []
 }
 ```
+
+### 3.4 npm Package Contract
+
+- `package.json.name` must stay exactly `sessionmap`
+- `package.json.bin.sessionmap` must point to `dist/cli.js`
+- `package.json.private` must remain `false` for publish-ready builds
+- `prepack` must build the runtime payload before tarball creation
+- `pack:check` must verify the tarball contents locally without requiring publication
+- Publishing is blocked if:
+  - the exact unscoped npm name is unavailable to the owning account
+  - tarball verification fails
+  - MIT license metadata or file is missing
+
+### 3.5 Runtime Path Expectations For Installed Packages
+
+- `src/daemon/launcher.ts` must be able to spawn the packaged `dist/cli.js`
+- `src/web/server.ts` must resolve static assets from packaged `dist/web`
+- `src/engine/tree-sitter-parser.ts` must resolve bundled grammars from packaged `grammars/`
+- No runtime path may assume the source repository layout exists once installed from npm
 
 - Runtime config lives in `src/config.ts`.
 - Secrets may come from env vars but must be parsed into the typed config object.

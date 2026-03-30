@@ -84,6 +84,13 @@ SessionMap fills that gap with a local-first analysis, graph, and session-tracki
 - The MCP HTTP adapter auto-starts with the daemon on a separate loopback transport
 - The stdio MCP bridge is a short-lived client that proxies to the daemon and must keep stdout protocol-clean
 
+### 3.9 CLI Distribution
+- The primary installation and first-use path is npm distribution
+- Zero-friction first use is `npx sessionmap <command>`
+- Persistent local install is `npm install -g sessionmap`
+- Contributor source installs remain supported but are no longer the primary user onboarding path
+- The packaged CLI must include bundled runtime assets such as `dist/web` and `grammars/`
+
 ## 4. Language Support Tiers
 
 | Tier | Depth | Languages |
@@ -156,6 +163,7 @@ SessionMap
 - MCP tools, resources, and prompts
 - `.sessionmap/` generation
 - CLI and daemon architecture
+- npm CLI distribution for `npx sessionmap` and global install
 - Optional LLM infrastructure with default-off behavior
 
 ### Out Of Scope (Future)
@@ -164,6 +172,7 @@ SessionMap
 - VS Code extension
 - Inferred architecture rules
 - Advanced semantic search and embeddings
+- Alternate package names or non-npm release channels
 
 ## 9. Milestone 1 Scope
 
