@@ -50,14 +50,16 @@
 | MCP adapter | `@modelcontextprotocol/sdk` + `zod` | Shared MCP catalog over Streamable HTTP and stdio |
 | Frontend | `vite` + vanilla TypeScript + `d3` | Small local dashboard with explicit graph rendering |
 | Tests | `vitest` + `@playwright/test` | Route/integration coverage plus one browser-level dashboard proof |
-| Distribution | npm package | First-class `npx sessionmap` and global install UX |
+| Distribution | npm package + source install | Current source-based global install with future npm publish readiness |
 
 ## 2.1 Packaging And Distribution
 
 - SessionMap is packaged as an npm CLI named exactly `sessionmap`
-- The primary public invocation is `npx sessionmap <command>`
-- Persistent install uses `npm install -g sessionmap`
-- Contributor/source installs remain supported, but they are not the primary end-user path
+- The current supported install path is source-based from the downloaded repo
+- Standard installation is `npm install`, `npm run build`, then `npm install -g .`
+- After installation, users run `sessionmap <command>` from the target repo they want to analyze
+- `npm link` remains supported for contributors, but it is not the primary end-user path
+- Public npm publish remains future-facing; docs must not imply `npx sessionmap` or `npm install -g sessionmap` work before real publication
 - `package.json` remains the source of truth for npm metadata, `bin`, publish allowlist, and pack scripts
 - The published tarball must include:
   - `dist/**`
@@ -74,6 +76,7 @@
   - `dist/cli.js`
   - `dist/web/**`
   - `grammars/**`
+- Install verification must also cover `npm install -g . --prefix <temp-prefix>` and execution from the installed global binary layout
 - The initial publish workflow is manual-first and documented in `docs/RELEASE.md`
 
 ## 3. Component Design

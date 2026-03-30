@@ -17,4 +17,4 @@
 - Packaging verification should use an isolated writable `npm_config_cache`; user-global npm caches may contain root-owned files and break `npm pack` or `npm exec`.
 - For npm packaging smoke tests, extracted-tarball runtime checks are more reliable than relying on `npm exec` cache state in sandboxed or mixed-permission environments.
 - In install docs, describe the analyzed repo generically as the user's target project; do not hardcode or name a specific example project unless the user explicitly asks for that exact example.
-- When npm publish is deferred but external testers still need easy setup, prefer versioned GitHub Release tarballs plus OS-specific wrappers over `npm link` or git-based npm installs.
+- When npm publish is deferred and users still want the simplest install path, default to `npm install -g .` from the cloned repo; keep `npm link` as a contributor convenience, not the primary user flow.

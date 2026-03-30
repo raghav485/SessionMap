@@ -29,6 +29,9 @@ let tarballPath = "";
 let extractedDirectory = "";
 let extractedPackageRoot = "";
 let cacheDirectory = "";
+let installPrefix = "";
+let installedCliPath = "";
+let installCacheDirectory = "";
 
 async function createTarball(): Promise<string> {
   packDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sessionmap-pack-test-"));
@@ -79,6 +82,22 @@ async function extractTarball(tgzPath: string): Promise<string> {
   return extractedPackageRoot;
 }
 
+async function installGlobalPackageFromRepo(): Promise<string> {
+  installPrefix = await fs.mkdtemp(path.join(os.tmpdir(), "sessionmap-global-install-"));
+  installCacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sessionmap-global-cache-"));
+
+  await execFileAsync(npmCommand, ["install", "-g", ".", "--prefix", installPrefix], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      npm_config_cache: installCacheDirectory
+    }
+  });
+
+  installedCliPath = path.join(installPrefix, "bin", process.platform === "win32" ? "sessionmap.cmd" : "sessionmap");
+  return installedCliPath;
+}
+
 async function runPackagedCli(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync(process.execPath, [path.join(extractedPackageRoot, "dist", "cli.js"), ...args], {
     cwd,
@@ -91,16 +110,37 @@ async function runPackagedCli(args: string[], cwd: string): Promise<{ stdout: st
   };
 }
 
+async function runInstalledCli(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  const result =
+    process.platform === "win32"
+      ? await execFileAsync("cmd.exe", ["/d", "/s", "/c", installedCliPath, ...args], {
+          cwd,
+          env: process.env
+        })
+      : await execFileAsync(installedCliPath, args, {
+          cwd,
+          env: process.env
+        });
+
+  return {
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString()
+  };
+}
+
 describe("npm package", () => {
   beforeAll(async () => {
     const tgzPath = await createTarball();
     await extractTarball(tgzPath);
+    await installGlobalPackageFromRepo();
   });
 
   afterAll(async () => {
     await fs.rm(packDirectory, { recursive: true, force: true });
     await fs.rm(extractedDirectory, { recursive: true, force: true });
     await fs.rm(cacheDirectory, { recursive: true, force: true });
+    await fs.rm(installPrefix, { recursive: true, force: true });
+    await fs.rm(installCacheDirectory, { recursive: true, force: true });
   });
 
   test("includes only required runtime assets in the tarball", async () => {
@@ -123,6 +163,19 @@ describe("npm package", () => {
   test("runs status from the extracted package tarball layout", async () => {
     const projectRoot = await copyFixtureToTempDir("sample-project");
     const result = await runPackagedCli(["status", "--project-root", projectRoot], projectRoot);
+
+    expect(result.stdout).toContain("SessionMap status: stopped");
+    expect(result.stdout).toContain(`projectRoot: ${projectRoot}`);
+  });
+
+  test("installs globally from the repo into a temp prefix and runs help", async () => {
+    const result = await runInstalledCli(["--help"], repoRoot);
+    expect(result.stdout).toContain("SessionMap daemon and local graph tooling");
+  });
+
+  test("installs globally from the repo into a temp prefix and runs status from another project root", async () => {
+    const projectRoot = await copyFixtureToTempDir("sample-project");
+    const result = await runInstalledCli(["status", "--project-root", projectRoot], projectRoot);
 
     expect(result.stdout).toContain("SessionMap status: stopped");
     expect(result.stdout).toContain(`projectRoot: ${projectRoot}`);

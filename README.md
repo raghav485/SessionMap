@@ -65,10 +65,12 @@ Tier 2 support is intentionally conservative and may prefer unresolved imports o
 
 ## Installation
 
-Public npm publish is intentionally deferred for now. Today there are two supported install paths:
+Public npm publish is intentionally deferred for now. The supported install path today is:
 
-- External testers: download a versioned GitHub beta wrapper for your OS from the matching GitHub Release
-- Contributors or local developers: clone this repo and run the built CLI directly
+- download or clone this GitHub repo
+- build SessionMap once
+- install it globally from the repo with `npm install -g .`
+- use `sessionmap ...` inside any project you want to analyze
 
 ### Requirements
 
@@ -81,125 +83,78 @@ Public npm publish is intentionally deferred for now. Today there are two suppor
 > SessionMap is not installed into the target repository as an npm dependency.
 > It runs against the repository you invoke it in.
 
-### A. GitHub Beta Release Path For External Testers
-
-This is the current low-friction path for friends or other testers. It does not require Git, `npm link`, or `npm install -g`.
-
-Download the OS-specific wrapper from the matching GitHub Release, then run it from the project you want SessionMap to analyze.
-
-macOS or Linux:
-
-```bash
-cd /path/to/your/project
-/path/to/sessionmap-beta.sh start
-/path/to/sessionmap-beta.sh scan
-/path/to/sessionmap-beta.sh status
-/path/to/sessionmap-beta.sh explain src
-```
-
-Windows PowerShell:
-
-```powershell
-cd C:\path\to\your\project
-C:\path\to\sessionmap-beta.ps1 start
-C:\path\to\sessionmap-beta.ps1 scan
-C:\path\to\sessionmap-beta.ps1 status
-C:\path\to\sessionmap-beta.ps1 explain src
-```
-
-Windows Command Prompt:
-
-```bat
-cd C:\path\to\your\project
-C:\path\to\sessionmap-beta.cmd start
-C:\path\to\sessionmap-beta.cmd scan
-C:\path\to\sessionmap-beta.cmd status
-C:\path\to\sessionmap-beta.cmd explain src
-```
-
-Full tester instructions are in [docs/BETA_TESTING.md](docs/BETA_TESTING.md).
-
-### B. Use This GitHub Clone Directly
+### Standard Install From The GitHub Repo
 
 ```bash
 git clone <your-repo-url>
 cd /path/to/SessionMap
 npm install
 npm run build
+npm install -g .
+sessionmap --help
 ```
 
-Run the built CLI directly from the other repository you want SessionMap to analyze:
+That installs SessionMap once on your machine. After that, switch to the other repository you want to analyze and run:
 
 ```bash
 cd /path/to/your/project
-node /path/to/SessionMap/dist/cli.js start
-node /path/to/SessionMap/dist/cli.js scan
-node /path/to/SessionMap/dist/cli.js status
-node /path/to/SessionMap/dist/cli.js explain src
+sessionmap start
+sessionmap scan
+sessionmap status
+sessionmap explain src
 ```
 
-If you want a local shell command while developing SessionMap itself, `npm link` still works on machines where global npm linking is permitted. It is a contributor convenience, not the recommended tester path.
+This is a machine-level install, not a per-project dependency. The target project does not add SessionMap to its `package.json`.
 
-### C. Future npm Install Path
+### Contributor Alternative: `npm link`
 
-The repo is already package-safe and publish-ready, but the public npm package is not the supported path yet. Once public publish happens, users will be able to use:
+If you are developing SessionMap itself and prefer npm’s symlink workflow, this remains supported:
 
 ```bash
-npx sessionmap start
+cd /path/to/SessionMap
+npm link
+sessionmap --help
 ```
 
-or:
+`npm link` is a contributor convenience. `npm install -g .` is the standard user path.
+
+### How It Works With Another Repo
+
+Think of it as two separate locations:
+
+- `/path/to/SessionMap` is where the SessionMap repo lives
+- `/path/to/your/project` is the repository you want SessionMap to analyze
+
+You install SessionMap once from `/path/to/SessionMap`, then you run `sessionmap ...` from `/path/to/your/project`.
+
+### Common Mistakes
+
+1. Running `npm install` inside the target repo only installs that repo's own dependencies and shows that repo's audit output. It does not install SessionMap into the repo.
+2. Running SessionMap from the wrong directory points it at the wrong project. Change into `/path/to/your/project` before running `sessionmap ...` unless you are intentionally using `--project-root`.
+3. If `sessionmap` is not found after install, your Node/npm global environment may not expose global binaries correctly. In that case, `npm link` may work on your machine, or your global npm prefix may need the normal Node/npm PATH setup for your OS.
+
+### Future npm Publish Path
+
+The repo is already package-safe and publish-ready, but the public npm package is not the current default path. Once public publish happens, users will be able to use:
 
 ```bash
 npm install -g sessionmap
 sessionmap start
 ```
 
-Until then, use the GitHub beta wrappers or the direct `node /path/to/SessionMap/dist/cli.js` path above.
-
-### How It Works With Another Repo
-
-SessionMap runs as a local CLI and daemon against the current working directory. It analyzes the repository you run it in, but SessionMap itself is launched either from a beta wrapper or from its own source repository.
-
-Think of it as two separate locations:
-- `/path/to/SessionMap` is where the SessionMap source repo lives if you cloned it
-- `/path/to/your/project` is the other repository you want SessionMap to analyze
-
-You always run the wrapper or CLI from `/path/to/your/project`, because that target project is what SessionMap will scan, watch, explain, and track.
-
-### Common Mistakes
-
-1. Running `npm install` inside the target repo only installs that repo's own dependencies and shows that repo's audit output. It does not install SessionMap into the repo.
-2. Running SessionMap from the wrong directory points it at the wrong project. Change into `/path/to/your/project` before running the wrapper or CLI unless you are intentionally using `--project-root`.
+Until then, install from the cloned GitHub repo with `npm install -g .`.
 
 ## Quick Start
 
-Choose one command form first:
-
-- Beta testers: use the wrapper for your OS from the matching GitHub Release
-- Local clone users: use `node /path/to/SessionMap/dist/cli.js`
-
-Example beta flow on macOS or Linux:
+After the one-time install above, run these commands inside the project you want SessionMap to analyze:
 
 ```bash
 cd /path/to/your/project
-/path/to/sessionmap-beta.sh start
-/path/to/sessionmap-beta.sh scan
-/path/to/sessionmap-beta.sh status
-/path/to/sessionmap-beta.sh explain src
+sessionmap start
+sessionmap scan
+sessionmap status
+sessionmap explain src
 ```
-
-Example local-clone flow:
-
-```bash
-cd /path/to/your/project
-node /path/to/SessionMap/dist/cli.js start
-node /path/to/SessionMap/dist/cli.js scan
-node /path/to/SessionMap/dist/cli.js status
-node /path/to/SessionMap/dist/cli.js explain src
-```
-
-In the examples below, `sessionmap` means “the command form you chose above.” Replace it with your beta wrapper or with `node /path/to/SessionMap/dist/cli.js` if you are not using a future npm install.
 
 - `sessionmap start` starts the project-local daemon.
 - `sessionmap scan` builds the initial graph.
@@ -210,7 +165,7 @@ SessionMap stores its local runtime and generated artifacts inside the target pr
 
 ## Track Agent Work
 
-Use the wrapper to capture an explicit session:
+Use the CLI to capture an explicit session:
 
 ```bash
 sessionmap track -- claude-code
@@ -238,7 +193,7 @@ or
 sessionmap status
 ```
 
-Open the reported `webUrl` in your browser. The dashboard reflects the current target repo whether you launched SessionMap from a beta wrapper, a local clone, or a future npm install.
+Open the reported `webUrl` in your browser. The dashboard reflects the current target repo.
 
 Main views:
 
@@ -265,8 +220,6 @@ For local MCP hosts that launch a command:
 ```bash
 sessionmap mcp --project-root /path/to/project
 ```
-
-If you are using the beta release channel, replace `sessionmap` with the wrapper for your OS. If you are using a local clone, replace it with `node /path/to/SessionMap/dist/cli.js`.
 
 This is the stdio command your local MCP host can launch directly. The MCP host launches the SessionMap CLI from your machine, and `--project-root` tells it which repository to analyze.
 
@@ -332,7 +285,7 @@ Environment variable resolution is provider-aware:
 - There is no semantic search or embeddings layer.
 - There is no VS Code extension.
 - `.sessionmap/` generation is manual, not automatic on every change.
-- Public npm publish is deferred for now; external testers should use the GitHub beta release wrappers or a local clone.
+- Public npm publish is deferred for now; install from the cloned GitHub repo with `npm install -g .`.
 
 ## Development And Verification
 
@@ -352,7 +305,6 @@ npm run verify
 
 - [docs/PRD.md](docs/PRD.md) — product intent and scope
 - [docs/TRD.md](docs/TRD.md) — architecture, data models, and contracts
-- [docs/BETA_TESTING.md](docs/BETA_TESTING.md) — cross-OS tester setup using GitHub beta release wrappers
 - [docs/RELEASE.md](docs/RELEASE.md) — manual npm release and publish checks
 - [AGENTS.md](AGENTS.md) — contributor and agent workflow rules
 

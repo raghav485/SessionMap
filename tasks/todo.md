@@ -1,5 +1,62 @@
 # Current Sprint
 
+## Source Install Simplification
+- [x] Replace the wrapper- and publish-first install story with a standard source install flow based on `npm install -g .`
+- [x] Remove beta-wrapper scripts, docs, and tests from the repo and package scripts
+- [x] Update `README.md`, `docs/PRD.md`, `docs/TRD.md`, and `docs/RELEASE.md` to present one machine-level install story and keep `npm link` as contributor-only
+- [x] Add smoke coverage for `npm install -g . --prefix <temp-prefix>` and confirm the installed CLI works from another project root
+- [x] Run targeted verification and record results
+- [x] Leave handoff summary
+
+## Source Install Simplification Verification
+- `npm run build`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `node dist/cli.js --help`
+- `npm run pack:check`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/release/npm-package.test.ts`
+
+## Source Install Simplification Handoff Summary
+- Files changed:
+  - `.gitignore`
+  - `README.md`
+  - `docs/PRD.md`
+  - `docs/RELEASE.md`
+  - `docs/TRD.md`
+  - `package.json`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/release/npm-package.test.ts`
+- Files removed:
+  - `docs/BETA_TESTING.md`
+  - `scripts/create-beta-release.mjs`
+  - `scripts/beta/sessionmap-beta.sh`
+  - `scripts/beta/sessionmap-beta.ps1`
+  - `scripts/beta/sessionmap-beta.cmd`
+  - `test/release/beta-launchers.test.ts`
+- Behavior changed:
+  - The only supported pre-publish user install path is now clone/build plus `npm install -g .`, followed by plain `sessionmap ...` in any target repo.
+  - `npm link` remains documented as a contributor convenience, not the default user workflow.
+  - The beta-wrapper distribution path was removed from the repo and public docs.
+  - Release smoke coverage now proves the real install path by installing into a temp prefix and running the installed CLI.
+- Docs updated:
+  - `README.md`
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `docs/RELEASE.md`
+  - `tasks/todo.md`
+  - `tasks/lessons.md`
+- Verification run:
+  - `npm run build`
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `node dist/cli.js --help`
+  - `npm run pack:check`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/release/npm-package.test.ts`
+- Remaining risks:
+  - Users whose Node/npm global environment does not expose global binaries correctly may still need normal machine-level npm/PATH troubleshooting outside this repo.
+  - `package-lock.json` was already dirty in the worktree before this task and was left untouched.
+
 ## npm Packaging: `sessionmap`
 - [x] Update `package.json` for npm publishing metadata, MIT licensing, and publish allowlist
 - [x] Add local tarball verification tooling and package smoke coverage

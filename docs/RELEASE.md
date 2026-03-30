@@ -1,83 +1,67 @@
 # SessionMap Release Guide
 
-This document covers the current beta-release flow for external testers and the future public npm release flow.
+This document covers the current source-install workflow and the future public npm release workflow.
 
-## Beta Release Channel
+## Current Source Install Workflow
 
-Use the beta channel while public npm publish is deferred. The beta flow ships a versioned npm tarball plus OS-specific wrappers that call it through `npm exec`.
+Public npm publish is deferred for now. The supported user path is to install SessionMap globally from the cloned repo.
 
-### Beta Preconditions
+### Source Install Preconditions
 
-- The repo is in a releasable state.
-- `package.json`, `README.md`, [docs/BETA_TESTING.md](./BETA_TESTING.md), and `LICENSE` are up to date.
-- You have chosen a beta release tag such as `v0.1.0-beta.1`.
-- The target GitHub repo release will host these assets:
-  - `sessionmap-<version>.tgz`
-  - `sessionmap-beta.sh`
-  - `sessionmap-beta.ps1`
-  - `sessionmap-beta.cmd`
+- The repo is in a usable state.
+- `package.json`, `README.md`, and `LICENSE` are up to date.
+- The user has Node.js 20+ and npm 10+ installed.
 
-### Prepare Beta Assets
+### Standard Source Install Steps
 
-1. Run targeted beta verification:
-   - `npm run beta:check`
-2. Run the beta bundle script with the intended release tag:
-   - `npm run beta:bundle -- --tag v0.1.0-beta.1`
-3. Review the generated output under:
-   - `out/beta-release/`
+```bash
+git clone <repo>
+cd /path/to/SessionMap
+npm install
+npm run build
+npm install -g .
+sessionmap --help
+```
 
-The beta bundle script:
+Then, from any target project:
 
-- runs `npm run release:check` by default
-- runs `npm pack` with an isolated writable npm cache
-- copies the tarball into `out/beta-release/`
-- generates the three wrappers with an exact GitHub Release tarball URL pinned into each file
+```bash
+cd /path/to/your/project
+sessionmap start
+sessionmap scan
+sessionmap status
+```
 
-For local iteration only, you can skip the full release gate:
+### Contributor Alternative
 
-- `npm run beta:bundle -- --tag v0.1.0-beta.1 --skip-release-check`
+Contributors can still use npm’s symlink flow:
 
-Do not use `--skip-release-check` for an actual tester-facing beta release.
+```bash
+cd /path/to/SessionMap
+npm link
+sessionmap --help
+```
 
-### Publish The Beta Release
+`npm link` is supported, but `npm install -g .` is the primary user path.
 
-1. Create or update the GitHub Release tag:
-   - `v0.1.0-beta.1`
-2. Upload these four assets from `out/beta-release/`:
-   - `sessionmap-<version>.tgz`
-   - `sessionmap-beta.sh`
-   - `sessionmap-beta.ps1`
-   - `sessionmap-beta.cmd`
-3. Publish the GitHub Release.
-4. Share [docs/BETA_TESTING.md](./BETA_TESTING.md) or equivalent tester instructions with the release link.
+### Source Install Validation
 
-### Beta Validation
+Before documenting or recommending the source-install flow, validate:
 
-Before telling testers to use a beta release:
+1. `npm run pack:check`
+2. `npm install -g . --prefix <temp-prefix>`
+3. `<temp-prefix>/bin/sessionmap --help`
+4. `<temp-prefix>/bin/sessionmap status --project-root <fixture-or-temp-project>`
 
-- confirm the uploaded wrappers point to the same GitHub Release tag
-- download the macOS/Linux wrapper and run:
-  - `./sessionmap-beta.sh --help`
-- manually verify the Windows PowerShell and CMD wrappers on real Windows machines when possible
-- ensure `status` and `start` work from a sample project directory
+This confirms the installed command works from a real global-binary layout rather than only through `node dist/cli.js`.
 
-Cross-OS wrapper execution cannot be fully proven from one machine. Treat Windows and shell wrapper validation as part of each beta cycle.
+### Troubleshooting Notes
 
-### Replacing A Bad Beta
+- If `sessionmap` is not found after `npm install -g .`, the issue is usually the user’s Node/npm global environment, not SessionMap’s CLI entrypoint.
+- If standard global install is blocked on a machine, `npm link` may still work as a contributor/developer fallback.
+- Do not add project-managed PATH-editing scripts, shell-profile writers, or custom OS installer scripts.
 
-Do not mutate an already-shared beta wrapper in place. Cut a new beta tag such as:
-
-- `v0.1.0-beta.2`
-
-Then:
-
-1. re-run `npm run beta:bundle -- --tag v0.1.0-beta.2`
-2. upload the new assets to the new release
-3. tell testers to switch to the new release assets
-
-This keeps beta installs version-pinned and avoids silently changing an existing wrapper.
-
-## Public npm Release
+## Future Public npm Release
 
 This remains the future release path once you decide to publish `sessionmap`.
 
@@ -100,10 +84,10 @@ If the exact unscoped npm name is unavailable, do not publish. This repo does no
    - `npm run verify`
 4. Run tarball verification:
    - `npm run pack:check`
-5. Run manual package smoke checks:
-   - `npm pack`
-   - `npm exec --yes --package ./sessionmap-<version>.tgz -- sessionmap --help`
-   - `npm exec --yes --package ./sessionmap-<version>.tgz -- sessionmap status --project-root <fixture-or-temp-project>`
+5. Run install smoke checks:
+   - `npm install -g . --prefix <temp-prefix>`
+   - `<temp-prefix>/bin/sessionmap --help`
+   - `<temp-prefix>/bin/sessionmap status --project-root <fixture-or-temp-project>`
 6. Publish:
    - `npm publish`
 7. Verify the public install path from a clean shell:
@@ -114,8 +98,8 @@ If the exact unscoped npm name is unavailable, do not publish. This repo does no
 
 - `prepack` builds the packaged runtime before `npm pack` or `npm publish`.
 - `pack:check` validates that the tarball contains runtime assets and excludes dev-only repo directories.
-- If your local npm cache has permission issues, run pack/exec checks with a writable temporary cache:
+- If your local npm cache has permission issues, run pack/install checks with a writable temporary cache:
   - `npm_config_cache="$(mktemp -d)" npm pack`
-  - `npm_config_cache="$(mktemp -d)" npm exec --yes --package ./sessionmap-<version>.tgz -- sessionmap --help`
+  - `npm_config_cache="$(mktemp -d)" npm install -g . --prefix <temp-prefix>`
 - If packaging validation fails, fix the tarball contract before publishing.
 - If public verification fails after publish, stop further release activity and investigate the packaging/runtime path mismatch first.

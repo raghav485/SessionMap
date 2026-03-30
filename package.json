@@ -41,8 +41,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepack": "npm run build",
-    "beta:bundle": "node scripts/create-beta-release.mjs",
-    "beta:check": "node scripts/run-vitest.mjs run --testTimeout=15000 test/release/beta-launchers.test.ts",
     "pack:check": "node scripts/verify-pack.mjs",
     "release:check": "npm run verify && npm run pack:check",
     "test:mcp": "npm run build && node scripts/run-vitest.mjs run --testTimeout=15000 test/mcp",
