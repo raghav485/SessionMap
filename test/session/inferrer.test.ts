@@ -75,8 +75,8 @@ describe("session inferrer", () => {
       id: "session-1",
       startedAt: "2026-03-27T00:00:00.000Z",
       endedAt: "2026-03-27T00:01:00.000Z",
-      actor: "unknown",
-      source: "watcher-inferred",
+      actor: "agent",
+      source: "auto-daemon",
       confidence: 0.45,
       touchedPaths: ["src/index.ts"],
       touchedModules: ["src"],
@@ -87,7 +87,7 @@ describe("session inferrer", () => {
       id: "changeset-2",
       startedAt: "2026-03-27T00:02:00.000Z",
       endedAt: "2026-03-27T00:02:00.100Z",
-      source: "watcher-inferred",
+      source: "auto-daemon",
       events: []
     };
     const impact: ChangeSetImpact = {
@@ -113,8 +113,8 @@ describe("session inferrer", () => {
       id: "session-1",
       startedAt: "2026-03-27T00:00:00.000Z",
       endedAt: "2026-03-27T00:01:00.000Z",
-      actor: "unknown",
-      source: "watcher-inferred",
+      actor: "agent",
+      source: "auto-daemon",
       confidence: 0.45,
       touchedPaths: ["src/index.ts"],
       touchedModules: ["src"],
@@ -125,7 +125,7 @@ describe("session inferrer", () => {
       id: "changeset-2",
       startedAt: "2026-03-27T00:02:00.000Z",
       endedAt: "2026-03-27T00:02:00.100Z",
-      source: "watcher-inferred",
+      source: "auto-daemon",
       events: []
     };
     const impact: ChangeSetImpact = {

@@ -1,6 +1,7 @@
 import type {
   DashboardOverviewResponse,
   ExplorerResponse,
+  GraphGranularity,
   GraphResponse,
   SearchResultResponse,
   SessionDetailResponse,
@@ -34,14 +35,36 @@ export function fetchSessionDetail(sessionId: string): Promise<SessionDetailResp
   return requestJson<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-export function fetchGraph(scope: "latest-session" | "project", sessionId?: string, limitNodes?: number): Promise<GraphResponse> {
+export function fetchGraph(
+  scope: "latest-session" | "project",
+  options?: {
+    sessionId?: string;
+    limitNodes?: number;
+    granularity?: GraphGranularity;
+    showHidden?: boolean;
+    focus?: string;
+    drilldown?: string;
+  }
+): Promise<GraphResponse> {
   const params = new URLSearchParams();
   params.set("scope", scope);
-  if (sessionId) {
-    params.set("sessionId", sessionId);
+  if (options?.sessionId) {
+    params.set("sessionId", options.sessionId);
   }
-  if (limitNodes !== undefined) {
-    params.set("limitNodes", String(limitNodes));
+  if (options?.limitNodes !== undefined) {
+    params.set("limitNodes", String(options.limitNodes));
+  }
+  if (options?.granularity) {
+    params.set("granularity", options.granularity);
+  }
+  if (options?.showHidden !== undefined) {
+    params.set("showHidden", String(options.showHidden));
+  }
+  if (options?.focus) {
+    params.set("focus", options.focus);
+  }
+  if (options?.drilldown) {
+    params.set("drilldown", options.drilldown);
   }
 
   return requestJson<GraphResponse>(`/api/graph?${params.toString()}`);

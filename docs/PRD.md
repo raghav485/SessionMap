@@ -37,19 +37,26 @@ SessionMap fills that gap with a local-first analysis, graph, and session-tracki
 
 ### 3.3 Session Tracking
 
-**Explicit tracking**
-- CLI wrapper: `sessionmap track -- claude-code`
+**Automatic tracking**
+- `sessionmap start` arms automatic agent tracking for the project daemon
+- The daemon opens the next session lazily on the first post-start change instead of creating an empty session immediately
+- Later change sets reuse inactivity and locality heuristics to merge or split sessions
+
+**Explicit override**
 - MCP tools: `begin_session` and `end_session`
+- Explicit MCP sessions temporarily take precedence over automatic daemon tracking
 
 **Passive inference**
 - File changes are grouped into `ChangeSet`s and then clustered into `ActivitySession`s
 - Session boundaries combine inactivity gap with path and graph locality
-- Explicit sessions take precedence over inferred clustering
-- Wrapper stdout capture remains local-only and bounded by config
+- Explicit MCP sessions take precedence over inferred clustering while active
+- Explicit stdout capture remains local-only and bounded by config when supplied
 
 ### 3.4 Web Dashboard
 - Sessions view for the latest work and impact
-- Graph view for dependency exploration
+- Graph view for dependency exploration with zoom, pan, fit/reset controls, an architecture-first project overview, clickable hidden-summary chips, sparse-project fallback lists when the filtered graph would otherwise be too empty to use, and a focus mode that drills from overview nodes into one architecture unit at a time with directory-first internal navigation before dropping to raw files
+- Project overview grouping is signal-driven rather than repo-specific: SessionMap prefers nested package/app manifests and statically declared entrypoints, then falls back to source-root or feature-folder heuristics for single-package repos
+- Focused graph drilldown remains strictly static: it shows only statically provable import and entrypoint structure, not runtime-only HTTP, IPC, registry, or message-bus relationships
 - Explorer view for annotated file and module details
 - Structural search in MVP, semantic search only when LLM is enabled
 - Loopback-only local dashboard served by the daemon
@@ -106,7 +113,7 @@ SessionMap fills that gap with a local-first analysis, graph, and session-tracki
 | # | Story |
 | --- | --- |
 | D1 | As a developer, I want to see a digest of what my last agent session changed so I can review efficiently |
-| D2 | As a developer, I want to wrap my agent with `sessionmap track --` so sessions are captured automatically |
+| D2 | As a developer, I want `sessionmap start` to begin automatic tracking so sessions are captured without wrapping my agent |
 | D3 | As a developer, I want to explore a visual map of my project to understand module relationships |
 | D4 | As a developer, I want to click any module and get an explanation of what it does |
 | D5 | As a developer, I want detected tech stack and framework patterns surfaced automatically |
@@ -135,7 +142,6 @@ SessionMap
 │   ├── sessionmap scan
 │   ├── sessionmap explain
 │   ├── sessionmap generate
-│   ├── sessionmap track --
 │   └── sessionmap mcp
 └── Dashboard
     ├── Sessions
@@ -190,7 +196,8 @@ Milestone 1 explicitly excludes session tracking, web, MCP, `.sessionmap/` gener
 ## 10. Milestone 2 Scope
 
 Milestone 2 delivers the session core:
-- explicit tracking with `sessionmap track -- <command...>`
+- automatic agent tracking armed by `sessionmap start`
+- explicit MCP session overrides via `begin_session` / `end_session`
 - passive inference from watcher events
 - typed `ChangeEvent -> ChangeSet -> ActivitySession` persistence
 - incremental touched-file graph updates without normal-path full rescans
@@ -205,7 +212,7 @@ Milestone 2 explicitly excludes web, MCP, generator, LLM, and Tier 2 language wo
 - No telemetry
 - Optional LLM use is explicit opt-in only
 - `.gitignore` and `.sessionmapignore` are respected by analysis components
-- wrapper stdout capture is stored locally only and never transmitted
+- explicit session stdout capture is stored locally only and never transmitted
 - the dashboard is loopback-only and does not expose the internal bearer-protected control API
 - MCP HTTP remains loopback-only and bearer-protected
 - MCP session queries expose only bounded session previews, not full raw `agentStdout`

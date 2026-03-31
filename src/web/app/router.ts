@@ -1,10 +1,25 @@
 export type AppRoute =
   | { name: "sessions" }
-  | { name: "graph"; scope: "latest-session" | "project" }
+  | { name: "graph"; scope: "latest-session" | "project"; focus?: string; drilldown?: string }
   | { name: "explorer"; path: string };
 
 function normalizePath(pathValue: string | null): string {
   return pathValue && pathValue.trim().length > 0 ? pathValue : ".";
+}
+
+function normalizeDrilldownPath(pathValue: string | null): string | undefined {
+  if (!pathValue || pathValue.trim().length === 0) {
+    return undefined;
+  }
+
+  const normalized = pathValue
+    .trim()
+    .replace(/\\/gu, "/")
+    .replace(/^\.\/+/u, "")
+    .replace(/^\/+/u, "")
+    .replace(/\/$/u, "");
+
+  return normalized.length > 0 && normalized !== "." ? normalized : undefined;
 }
 
 export function parseRoute(hash: string): AppRoute {
@@ -14,9 +29,14 @@ export function parseRoute(hash: string): AppRoute {
   const query = new URLSearchParams(rawQuery);
 
   if (routePath === "/graph") {
+    const scope = query.get("scope") === "project" ? "project" : "latest-session";
+    const focus = scope === "project" ? normalizePath(query.get("focus")) : ".";
+    const drilldown = scope === "project" && focus !== "." ? normalizeDrilldownPath(query.get("drilldown")) : undefined;
     return {
       name: "graph",
-      scope: query.get("scope") === "project" ? "project" : "latest-session"
+      scope,
+      focus: focus === "." ? undefined : focus,
+      drilldown
     };
   }
 
@@ -34,7 +54,15 @@ export function parseRoute(hash: string): AppRoute {
 
 export function formatRoute(route: AppRoute): string {
   if (route.name === "graph") {
-    return `#/graph?scope=${route.scope}`;
+    const params = new URLSearchParams({ scope: route.scope });
+    if (route.focus) {
+      params.set("focus", route.focus);
+    }
+    if (route.drilldown) {
+      params.set("drilldown", route.drilldown);
+    }
+
+    return `#/graph?${params.toString()}`;
   }
 
   if (route.name === "explorer") {

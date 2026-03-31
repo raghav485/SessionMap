@@ -1,5 +1,6 @@
 import "./styles.css";
 
+import type { GraphHiddenCategory, GraphResponse } from "../../types.js";
 import {
   connectLiveUpdates,
   fetchExplorer,
@@ -94,25 +95,125 @@ function updateChrome(): void {
   }
 }
 
+function shouldResetGraphViewport(previousRoute: typeof state.route, nextRoute: typeof state.route): boolean {
+  if (previousRoute.name !== "graph" && nextRoute.name === "graph") {
+    return true;
+  }
+
+  if (previousRoute.name === "graph" && nextRoute.name !== "graph") {
+    return true;
+  }
+
+  return (
+    previousRoute.name === "graph" &&
+    nextRoute.name === "graph" &&
+    (previousRoute.scope !== nextRoute.scope ||
+      previousRoute.focus !== nextRoute.focus ||
+      previousRoute.drilldown !== nextRoute.drilldown)
+  );
+}
+
+function fetchGraphForScope(scope: "latest-session" | "project") {
+  if (scope === "project") {
+    const focus = state.route.name === "graph" && state.route.scope === "project" ? state.route.focus : undefined;
+    const drilldown =
+      state.route.name === "graph" && state.route.scope === "project" ? state.route.drilldown : undefined;
+    return fetchGraph(scope, {
+      granularity: focus ? "file" : state.projectGraphGranularity,
+      showHidden: state.projectGraphShowHidden,
+      focus,
+      drilldown
+    });
+  }
+
+  return fetchGraph(scope);
+}
+
+function getDefaultHiddenCategory(graph: GraphResponse | null): GraphHiddenCategory | null {
+  if (!graph || graph.scope !== "project" || graph.hiddenPreview.length === 0) {
+    return null;
+  }
+
+  if (graph.fallbackApplied) {
+    return graph.hiddenPreview.find((group) => group.category === "isolated")?.category ?? graph.hiddenPreview[0]?.category ?? null;
+  }
+
+  return null;
+}
+
+function syncProjectHiddenCategorySelection(graph: GraphResponse | null): void {
+  if (!graph || graph.scope !== "project" || state.projectGraphShowHidden || graph.hiddenPreview.length === 0) {
+    state.projectGraphActiveHiddenCategory = null;
+    return;
+  }
+
+  const availableCategories = new Set(graph.hiddenPreview.map((group) => group.category));
+  const fallbackCategory = getDefaultHiddenCategory(graph);
+  if (fallbackCategory) {
+    state.projectGraphActiveHiddenCategory = fallbackCategory;
+    return;
+  }
+
+  if (
+    state.projectGraphActiveHiddenCategory &&
+    availableCategories.has(state.projectGraphActiveHiddenCategory)
+  ) {
+    return;
+  }
+
+  state.projectGraphActiveHiddenCategory = null;
+}
+
+async function updateProjectGraphPreferences(next: {
+  granularity?: typeof state.projectGraphGranularity;
+  showHidden?: boolean;
+}): Promise<void> {
+  const nextGranularity = next.granularity ?? state.projectGraphGranularity;
+  const nextShowHidden = next.showHidden ?? state.projectGraphShowHidden;
+  const granularityChanged = nextGranularity !== state.projectGraphGranularity;
+  const showHiddenChanged = nextShowHidden !== state.projectGraphShowHidden;
+
+  if (!granularityChanged && !showHiddenChanged) {
+    return;
+  }
+
+  state.projectGraphGranularity = nextGranularity;
+  state.projectGraphShowHidden = nextShowHidden;
+  if (granularityChanged || showHiddenChanged) {
+    state.graphViewport = null;
+  }
+
+  state.graph = await fetchGraphForScope("project");
+  syncProjectHiddenCategorySelection(state.graph);
+  pulseView();
+  render();
+}
+
 async function loadRouteData(): Promise<void> {
   if (state.route.name === "sessions") {
     const [overview, sessions, graph] = await Promise.all([
       fetchOverview(),
       fetchSessions(),
-      fetchGraph("latest-session")
+      fetchGraphForScope("latest-session")
     ]);
     state.overview = overview;
     state.sessions = sessions;
     state.graph = graph;
+    state.projectGraphActiveHiddenCategory = null;
     state.explorer = null;
     state.explorerHighlightPath = null;
     return;
   }
 
   if (state.route.name === "graph") {
-    const [overview, graph] = await Promise.all([fetchOverview(), fetchGraph(state.route.scope)]);
+    const [overview, graph] = await Promise.all([fetchOverview(), fetchGraphForScope(state.route.scope)]);
     state.overview = overview;
     state.graph = graph;
+    if (state.route.scope === "project") {
+      syncProjectHiddenCategorySelection(graph);
+    } else {
+      state.projectGraphActiveHiddenCategory = null;
+    }
     state.explorer = null;
     state.explorerHighlightPath = null;
     return;
@@ -150,11 +251,82 @@ function render(): void {
       renderGraphView({
         graph: state.graph,
         scope: state.route.scope,
+        granularity: state.projectGraphGranularity,
+        showHidden: state.projectGraphShowHidden,
+        activeHiddenCategory: state.projectGraphActiveHiddenCategory,
+        viewport: state.graphViewport,
         onScopeChange(scope) {
           navigate({
             name: "graph",
             scope
           });
+        },
+        onFocus(path) {
+          navigate({
+            name: "graph",
+            scope: "project",
+            focus: path
+          });
+        },
+        onDrilldown(drilldown) {
+          const focus = state.route.name === "graph" && state.route.scope === "project" ? state.route.focus : undefined;
+          if (!focus) {
+            return;
+          }
+
+          navigate({
+            name: "graph",
+            scope: "project",
+            focus,
+            drilldown
+          });
+        },
+        onFocusExit() {
+          if (state.route.name === "graph" && state.route.scope === "project" && state.route.focus) {
+            if (state.route.drilldown) {
+              const segments = state.route.drilldown.split("/").filter(Boolean);
+              if (segments.length > 1) {
+                navigate({
+                  name: "graph",
+                  scope: "project",
+                  focus: state.route.focus,
+                  drilldown: segments.slice(0, -1).join("/")
+                });
+                return;
+              }
+            }
+
+            if (state.route.focus && state.route.drilldown) {
+              navigate({
+                name: "graph",
+                scope: "project",
+                focus: state.route.focus
+              });
+              return;
+            }
+          }
+
+          navigate({
+            name: "graph",
+            scope: "project"
+          });
+        },
+        onGranularityChange(granularity) {
+          void updateProjectGraphPreferences({
+            granularity
+          });
+        },
+        onShowHiddenChange(showHidden) {
+          void updateProjectGraphPreferences({
+            showHidden
+          });
+        },
+        onHiddenCategoryChange(category) {
+          state.projectGraphActiveHiddenCategory = category;
+          render();
+        },
+        onViewportChange(viewport) {
+          state.graphViewport = viewport;
         },
         onNodeSelect(path) {
           navigate({
@@ -191,7 +363,12 @@ async function refreshForLiveUpdate(): Promise<void> {
       state.liveMessage?.reason === "scan-completed" ||
       state.liveMessage?.reason === "generation-completed"
     ) {
-      state.graph = await fetchGraph(state.route.scope);
+      state.graph = await fetchGraphForScope(state.route.scope);
+      if (state.route.scope === "project") {
+        syncProjectHiddenCategorySelection(state.graph);
+      } else {
+        state.projectGraphActiveHiddenCategory = null;
+      }
       pulseView();
     }
     return;
@@ -216,7 +393,11 @@ async function refreshForLiveUpdate(): Promise<void> {
 }
 
 window.addEventListener("hashchange", async () => {
-  state.route = parseRoute(window.location.hash);
+  const nextRoute = parseRoute(window.location.hash);
+  if (shouldResetGraphViewport(state.route, nextRoute)) {
+    state.graphViewport = null;
+  }
+  state.route = nextRoute;
   searchPanel.reset();
   await loadRouteData();
   render();

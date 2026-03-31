@@ -149,7 +149,7 @@ export function registerMcpServer(server: McpServer, service: McpService): void 
     async ({ intent, agentCommand }) => {
       const started = await service.beginSession({
         intent,
-        agentCommand: agentCommand ?? "mcp-client",
+        agentCommand,
         source: "explicit-mcp"
       });
       return createJsonTextContent(`Started MCP session ${started.sessionId}.`, started);

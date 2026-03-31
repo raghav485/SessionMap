@@ -5,7 +5,7 @@ SessionMap is a local-first shared understanding layer for AI-assisted codebases
 ## What It Does
 
 - Scans a codebase and builds a local structural graph of files, directories, dependencies, and module boundaries.
-- Tracks both explicit and inferred coding sessions so you can see what changed and what was impacted.
+- Starts automatic agent session tracking when the daemon is running so you can see what changed and what was impacted without wrapping commands.
 - Serves a local dashboard with Sessions, Graph, and Explorer views.
 - Exposes MCP tools, resources, and prompts for local AI clients.
 - Generates `.sessionmap/` context files for future agent runs.
@@ -29,7 +29,6 @@ SessionMap is local-first. It does not persist raw source code in state, and LLM
 - `sessionmap status`
 - `sessionmap scan`
 - `sessionmap explain <path>`
-- `sessionmap track -- <command...>`
 - `sessionmap sessions`
 - `sessionmap generate`
 - `sessionmap mcp`
@@ -165,19 +164,15 @@ SessionMap stores its local runtime and generated artifacts inside the target pr
 
 ## Track Agent Work
 
-Use the CLI to capture an explicit session:
+Start SessionMap once for the target repo:
 
 ```bash
-sessionmap track -- claude-code
+sessionmap start
 ```
 
-Or wrap any other command:
+After that, SessionMap opens the next session lazily on the first post-start file changes and keeps clustering later edits using the normal inactivity and locality rules.
 
-```bash
-sessionmap track -- npm test
-```
-
-This creates an explicit session, records touched files and impacted dependents, and captures only bounded stdout locally.
+If you need an explicit override for a remote MCP client or a long-running tool, use the MCP `begin_session` and `end_session` tools. That explicit MCP path is still supported, but it is no longer the default onboarding workflow.
 
 ## Open The Dashboard
 
@@ -237,7 +232,7 @@ The MCP HTTP endpoint is bearer-protected, loopback-only, and intended for local
 
 1. Start SessionMap in a repo with `sessionmap start`.
 2. Build the initial graph with `sessionmap scan`.
-3. Wrap your agent with `sessionmap track -- ...`.
+3. Make changes in the repo while the daemon is running.
 4. Inspect the latest work in the dashboard.
 5. Run `sessionmap generate` to create `.sessionmap/` files for future agent context.
 

@@ -6,7 +6,10 @@ import type {
   ChangeSetImpact,
   ExplicitSessionEndRequest,
   ExplicitSessionStartRequest,
-  IGraphStore
+  IGraphStore,
+  SessionActor,
+  SessionSource,
+  TrackingMode
 } from "../types.js";
 import { SessionInferrer } from "./inferrer.js";
 
@@ -16,15 +19,47 @@ function unique(items: string[]): string[] {
 
 export class SessionTracker {
   private activeExplicitSessionId: string | null = null;
+  private autoTrackingArmed = false;
 
   constructor(
     private readonly store: IGraphStore,
     private readonly inferrer: SessionInferrer,
-    private readonly captureStdout: boolean
+    private readonly captureStdout: boolean,
+    private readonly inactivityGapMs: number
   ) {}
 
-  getActiveExplicitSessionId(): string | null {
-    return this.activeExplicitSessionId;
+  armAutoTracking(): void {
+    this.autoTrackingArmed = true;
+  }
+
+  disarmAutoTracking(): void {
+    this.autoTrackingArmed = false;
+  }
+
+  getTrackingMode(): TrackingMode {
+    if (this.activeExplicitSessionId) {
+      return "explicit-mcp";
+    }
+
+    return this.autoTrackingArmed ? "auto" : "idle";
+  }
+
+  getActiveSessionId(referenceTime = new Date()): string | null {
+    if (this.activeExplicitSessionId) {
+      return this.activeExplicitSessionId;
+    }
+
+    if (!this.autoTrackingArmed) {
+      return null;
+    }
+
+    const latestAutoSession = this.getLatestSessionBySource("auto-daemon");
+    if (!latestAutoSession) {
+      return null;
+    }
+
+    const gapMs = referenceTime.getTime() - new Date(latestAutoSession.endedAt).getTime();
+    return gapMs <= this.inactivityGapMs ? latestAutoSession.id : null;
   }
 
   getSessions(limit?: number): ActivitySession[] {
@@ -47,7 +82,7 @@ export class SessionTracker {
       startedAt: new Date().toISOString(),
       endedAt: new Date().toISOString(),
       actor: "agent",
-      source: request.source ?? "explicit-wrapper",
+      source: request.source ?? "explicit-mcp",
       confidence: 1,
       intent: request.intent,
       agentCommand: request.agentCommand,
@@ -90,42 +125,55 @@ export class SessionTracker {
 
   recordChangeSet(changeSet: ChangeSet, impact: ChangeSetImpact): ActivitySession {
     if (this.activeExplicitSessionId) {
-      const session = this.store.getSession(this.activeExplicitSessionId);
-      if (!session) {
-        throw new Error(`Missing active explicit session: ${this.activeExplicitSessionId}`);
-      }
+      return this.attachChangeSetToExplicitSession(changeSet, impact);
+    }
 
-      const effectiveChangeSet: ChangeSet = {
-        ...changeSet,
-        source: session.source
-      };
-      this.store.addChangeSet(effectiveChangeSet);
+    if (this.autoTrackingArmed) {
+      return this.recordInferredLikeChangeSet(changeSet, impact, "auto-daemon", "agent");
+    }
 
-      const updated: ActivitySession = {
-        ...session,
-        endedAt: effectiveChangeSet.endedAt,
-        touchedPaths: unique([...session.touchedPaths, ...impact.touchedPaths]),
-        touchedModules: unique([...session.touchedModules, ...impact.touchedModules]),
-        changeSets: unique([...session.changeSets, effectiveChangeSet.id]),
-        impactedDependents: unique([...(session.impactedDependents ?? []), ...impact.impactedDependentModules])
-      };
+    return this.recordInferredLikeChangeSet(changeSet, impact, "watcher-inferred", "unknown");
+  }
 
-      this.store.upsertSession(updated);
-      return updated;
+  private attachChangeSetToExplicitSession(changeSet: ChangeSet, impact: ChangeSetImpact): ActivitySession {
+    const session = this.store.getSession(this.activeExplicitSessionId!);
+    if (!session) {
+      throw new Error(`Missing active explicit session: ${this.activeExplicitSessionId}`);
     }
 
     const effectiveChangeSet: ChangeSet = {
       ...changeSet,
-      source: "watcher-inferred"
+      source: session.source
     };
     this.store.addChangeSet(effectiveChangeSet);
 
-    const latestInferred =
-      this.store
-        .getSessions()
-        .filter((session) => session.source === "watcher-inferred")
-        .at(0) ?? null;
-    const decision = this.inferrer.decide(effectiveChangeSet, impact, latestInferred);
+    const updated: ActivitySession = {
+      ...session,
+      endedAt: effectiveChangeSet.endedAt,
+      touchedPaths: unique([...session.touchedPaths, ...impact.touchedPaths]),
+      touchedModules: unique([...session.touchedModules, ...impact.touchedModules]),
+      changeSets: unique([...session.changeSets, effectiveChangeSet.id]),
+      impactedDependents: unique([...(session.impactedDependents ?? []), ...impact.impactedDependentModules])
+    };
+
+    this.store.upsertSession(updated);
+    return updated;
+  }
+
+  private recordInferredLikeChangeSet(
+    changeSet: ChangeSet,
+    impact: ChangeSetImpact,
+    source: SessionSource,
+    actor: SessionActor
+  ): ActivitySession {
+    const effectiveChangeSet: ChangeSet = {
+      ...changeSet,
+      source
+    };
+    this.store.addChangeSet(effectiveChangeSet);
+
+    const latestSession = this.getLatestSessionBySource(source);
+    const decision = this.inferrer.decide(effectiveChangeSet, impact, latestSession);
 
     if (decision.mergeWithSessionId) {
       const existing = this.store.getSession(decision.mergeWithSessionId);
@@ -151,8 +199,8 @@ export class SessionTracker {
       id: crypto.randomUUID(),
       startedAt: effectiveChangeSet.startedAt,
       endedAt: effectiveChangeSet.endedAt,
-      actor: "unknown",
-      source: "watcher-inferred",
+      actor,
+      source,
       confidence: decision.confidence,
       touchedPaths: unique(impact.touchedPaths),
       touchedModules: unique(impact.touchedModules),
@@ -162,5 +210,9 @@ export class SessionTracker {
 
     this.store.upsertSession(created);
     return created;
+  }
+
+  private getLatestSessionBySource(source: SessionSource): ActivitySession | null {
+    return this.store.getSessions().find((session) => session.source === source) ?? null;
   }
 }

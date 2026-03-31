@@ -19,7 +19,6 @@ import { runDaemon } from "./daemon/main.js";
 import { ensureDaemonRunning, stopDaemon } from "./daemon/launcher.js";
 import { getSessionMapPaths, isProcessAlive, readManifest, removeManifest } from "./daemon/manifest.js";
 import { runMcpStdioBridge } from "./mcp/stdio-bridge.js";
-import { runTrackedCommand } from "./session/wrapper.js";
 import { loadConfig } from "./config.js";
 
 const logger = createLogger("cli");
@@ -56,7 +55,8 @@ function formatStatus(status: Awaited<ReturnType<typeof getDaemonStatus>>): stri
     `sessions: ${status.sessionCount}`,
     `changeSets: ${status.changeSetCount}`,
     `watcherRunning: ${status.watcherRunning}`,
-    `activeExplicitSessionId: ${status.activeExplicitSessionId ?? "none"}`,
+    `trackingMode: ${status.trackingMode}`,
+    `activeSessionId: ${status.activeSessionId ?? "none"}`,
     `lastScan: ${status.lastScanSummary?.completedAt ?? "never"}`,
     `lastIncrementalUpdateMs: ${status.lastIncrementalUpdateMs ?? "n/a"}`,
     `lastGeneratedAt: ${status.lastGeneratedAt ?? "never"}`,
@@ -101,7 +101,8 @@ async function main(): Promise<void> {
         `controlUrl: ${manifest.controlUrl}`,
         `webUrl: ${manifest.webUrl ?? "n/a"}`,
         `mcpHttpUrl: ${manifest.mcpHttpUrl ?? "n/a"}`,
-        `pid: ${manifest.pid}`
+        `pid: ${manifest.pid}`,
+        `trackingMode: auto`
       ]);
     });
 
@@ -136,6 +137,7 @@ async function main(): Promise<void> {
             sessionCount: 0,
             changeSetCount: 0,
             watcherRunning: false,
+            trackingMode: "idle",
             llmEnabled: config.llm.enabled,
             llmProvider: config.llm.provider ?? undefined
           })
@@ -167,6 +169,7 @@ async function main(): Promise<void> {
             sessionCount: 0,
             changeSetCount: 0,
             watcherRunning: false,
+            trackingMode: "idle",
             llmEnabled: config.llm.enabled,
             llmProvider: config.llm.provider ?? undefined
           })
@@ -277,19 +280,6 @@ async function main(): Promise<void> {
     .action(async (options: { projectRoot: string }) => {
       const projectRoot = resolveProjectRoot(options.projectRoot);
       await runMcpStdioBridge(projectRoot);
-    });
-
-  program
-    .command("track")
-    .passThroughOptions()
-    .allowUnknownOption(true)
-    .option("--project-root <path>", "Project root", process.cwd())
-    .option("--intent <text>", "Optional session intent")
-    .argument("<command...>", "Command to run after --")
-    .action(async (command: string[], options: { projectRoot: string; intent?: string }) => {
-      const projectRoot = resolveProjectRoot(options.projectRoot);
-      const exitCode = await runTrackedCommand(projectRoot, command, options.intent);
-      process.exitCode = exitCode;
     });
 
   program

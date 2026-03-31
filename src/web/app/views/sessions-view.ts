@@ -50,7 +50,7 @@ export function renderSessionsView(options: SessionsViewOptions): HTMLElement {
   recent.innerHTML = `
     <div class="panel-header">
       <h2>Recent Sessions</h2>
-      <p class="panel-subtitle">Latest tracked and inferred work</p>
+      <p class="panel-subtitle">Latest automatic and explicit work</p>
     </div>
   `;
 

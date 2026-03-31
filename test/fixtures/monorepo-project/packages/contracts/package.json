@@ -1,0 +1,9 @@
+{
+  "name": "@fixture/contracts",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime/logger": "./src/runtime/logger.ts"
+  }
+}

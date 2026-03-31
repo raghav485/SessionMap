@@ -19,7 +19,8 @@ export interface WebServerOptions {
   projectName: string;
   projectRoot: string;
   getWatcherRunning(): boolean;
-  getActiveExplicitSessionId(): string | null;
+  getTrackingMode(): "auto" | "explicit-mcp" | "idle";
+  getActiveSessionId(): string | null;
   eventBus: RuntimeEventBus;
   port: number;
   host?: string;
@@ -51,7 +52,8 @@ export async function createWebServer(options: Omit<WebServerOptions, "port" | "
     projectName: options.projectName,
     projectRoot: options.projectRoot,
     getWatcherRunning: options.getWatcherRunning,
-    getActiveExplicitSessionId: options.getActiveExplicitSessionId
+    getTrackingMode: options.getTrackingMode,
+    getActiveSessionId: options.getActiveSessionId
   });
   registerLiveUpdatesRoute(app, options.eventBus);
 

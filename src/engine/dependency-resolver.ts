@@ -13,7 +13,30 @@ interface TsConfigAlias {
   pattern: string;
   targets: string[];
   hasWildcard: boolean;
+  baseUrl: string;
 }
+
+interface TsConfigContext {
+  configPath: string;
+  rootPath: string;
+  baseUrl: string;
+  aliases: TsConfigAlias[];
+}
+
+interface LocalPackageDefinition {
+  name: string;
+  rootPath: string;
+  absoluteRoot: string;
+  manifest: {
+    main?: string;
+    module?: string;
+    types?: string;
+    source?: string;
+    exports?: unknown;
+  };
+}
+
+type WorkspaceField = string[] | { packages?: string[] };
 
 interface ComposerPsr4Mapping {
   prefix: string;
@@ -25,8 +48,10 @@ interface ResolveImportOptions {
   importedSymbols?: string[];
 }
 
-const DEPENDENCY_RESOLVER_TRIGGER_FILES = new Set(["tsconfig.json", "go.mod", "composer.json"]);
+const DEPENDENCY_RESOLVER_TRIGGER_FILES = new Set(["package.json", "tsconfig.json", "jsconfig.json", "go.mod", "composer.json"]);
 const IGNORED_WALK_DIRECTORIES = new Set(DEFAULT_IGNORE_PATTERNS);
+const TS_CONFIG_FILE_NAMES = ["tsconfig.json", "jsconfig.json"];
+const SOURCE_SHADOW_DIRECTORIES = ["src", "source", "lib", "app"];
 
 function normalizeRelativePath(filePath: string): string {
   return filePath.replace(/\\/gu, "/");
@@ -38,6 +63,15 @@ function readTextFile(filePath: string): string | null {
   }
 
   return fs.readFileSync(filePath, "utf8");
+}
+
+function readJsonFile<T>(filePath: string): T | null {
+  const source = readTextFile(filePath);
+  if (!source) {
+    return null;
+  }
+
+  return JSON.parse(source) as T;
 }
 
 function resolveCandidate(
@@ -70,7 +104,7 @@ function resolveCandidate(
   return null;
 }
 
-function resolveAliasTarget(specifier: string, alias: TsConfigAlias, baseUrl: string): string | null {
+function resolveAliasTarget(specifier: string, alias: TsConfigAlias): string | null {
   if (alias.hasWildcard) {
     const [prefix, suffix] = alias.pattern.split("*");
     if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) {
@@ -80,7 +114,7 @@ function resolveAliasTarget(specifier: string, alias: TsConfigAlias, baseUrl: st
     const wildcardValue = specifier.slice(prefix.length, specifier.length - suffix.length);
     for (const target of alias.targets) {
       const candidate = target.replace("*", wildcardValue);
-      const resolved = resolveCandidate(path.resolve(baseUrl, candidate), TS_JS_RESOLUTION_EXTENSIONS);
+      const resolved = resolveCandidate(path.resolve(alias.baseUrl, candidate), TS_JS_RESOLUTION_EXTENSIONS);
       if (resolved) {
         return resolved;
       }
@@ -94,13 +128,141 @@ function resolveAliasTarget(specifier: string, alias: TsConfigAlias, baseUrl: st
   }
 
   for (const target of alias.targets) {
-    const resolved = resolveCandidate(path.resolve(baseUrl, target), TS_JS_RESOLUTION_EXTENSIONS);
+    const resolved = resolveCandidate(path.resolve(alias.baseUrl, target), TS_JS_RESOLUTION_EXTENSIONS);
     if (resolved) {
       return resolved;
     }
   }
 
   return null;
+}
+
+function normalizeConfigAliases(paths: Record<string, string[]> | undefined, baseUrl: string): TsConfigAlias[] {
+  return Object.entries(paths ?? {}).map(([pattern, targets]) => ({
+    pattern,
+    targets,
+    hasWildcard: pattern.includes("*"),
+    baseUrl
+  }));
+}
+
+function mergeConfigAliases(parentAliases: TsConfigAlias[], ownAliases: TsConfigAlias[]): TsConfigAlias[] {
+  const merged = new Map(parentAliases.map((alias) => [alias.pattern, alias]));
+  for (const alias of ownAliases) {
+    merged.set(alias.pattern, alias);
+  }
+
+  return Array.from(merged.values());
+}
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.]/gu, "\\$&");
+}
+
+function workspacePatternToRegex(pattern: string): RegExp {
+  const normalizedPattern = normalizeRelativePath(pattern).replace(/\/$/u, "");
+  const regexSource = normalizedPattern
+    .split("/")
+    .map((segment) => {
+      if (segment === "**") {
+        return ".*";
+      }
+
+      return escapeRegexLiteral(segment).replace(/\*/gu, "[^/]+");
+    })
+    .join("/");
+
+  return new RegExp(`^${regexSource}$`, "u");
+}
+
+function resolveConfigExtendsPath(configPath: string, extendsPath: string): string | null {
+  if (!extendsPath.startsWith(".") && !path.isAbsolute(extendsPath)) {
+    return null;
+  }
+
+  const configDirectory = path.dirname(configPath);
+  const candidatePaths = [
+    path.resolve(configDirectory, extendsPath),
+    path.resolve(configDirectory, `${extendsPath}.json`),
+    path.resolve(configDirectory, extendsPath, "tsconfig.json"),
+    path.resolve(configDirectory, extendsPath, "jsconfig.json")
+  ];
+
+  return candidatePaths.find((candidatePath) => fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile()) ?? null;
+}
+
+function parsePackageSpecifier(specifier: string): { packageName: string; subpath: string } {
+  if (specifier.startsWith("@")) {
+    const [scope, name, ...remainder] = specifier.split("/");
+    return {
+      packageName: [scope, name].filter(Boolean).join("/"),
+      subpath: remainder.join("/")
+    };
+  }
+
+  const [packageName, ...remainder] = specifier.split("/");
+  return {
+    packageName,
+    subpath: remainder.join("/")
+  };
+}
+
+function toExportsSubpathKey(subpath: string): string {
+  return subpath ? `./${subpath}` : ".";
+}
+
+function collectExportTargets(exportsField: unknown, subpath: string): string[] {
+  const exportKey = toExportsSubpathKey(subpath);
+
+  if (typeof exportsField === "string") {
+    return subpath ? [] : [exportsField];
+  }
+
+  if (!exportsField || typeof exportsField !== "object") {
+    return [];
+  }
+
+  const exportRecord = exportsField as Record<string, unknown>;
+  const exactMatch = exportRecord[exportKey];
+  if (exactMatch !== undefined) {
+    return collectExportTargets(exactMatch, "");
+  }
+
+  const wildcardMatch = Object.entries(exportRecord).find(([key]) => key.includes("*") && exportKey.startsWith(key.split("*")[0] ?? ""));
+  if (wildcardMatch) {
+    const [key, value] = wildcardMatch;
+    const [prefix, suffix] = key.split("*");
+    if ((prefix === undefined || exportKey.startsWith(prefix)) && (suffix === undefined || exportKey.endsWith(suffix))) {
+      const wildcardValue = exportKey.slice(prefix.length, exportKey.length - suffix.length);
+      return collectExportTargets(value, "").map((target) => target.replace("*", wildcardValue));
+    }
+  }
+
+  const orderedKeys = ["types", "source", "import", "default", "require"];
+  const collectedTargets: string[] = [];
+  for (const key of orderedKeys) {
+    const value = exportRecord[key];
+    if (value !== undefined) {
+      collectedTargets.push(...collectExportTargets(value, ""));
+    }
+  }
+
+  return collectedTargets;
+}
+
+function dedupePreserveOrder(values: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    ordered.push(value);
+  }
+
+  return ordered;
 }
 
 function toInternalResolution(projectRoot: string, absolutePath: string): ImportResolution {
@@ -142,8 +304,8 @@ export interface ImportResolution {
 }
 
 export class DependencyResolver {
-  private baseUrl: string;
-  private aliases: TsConfigAlias[];
+  private tsJsContexts: TsConfigContext[];
+  private localPackages: Map<string, LocalPackageDefinition>;
   private goModulePath: string | null;
   private composerPsr4Mappings: ComposerPsr4Mapping[];
   private javaIndex: Map<string, string> | null;
@@ -151,8 +313,8 @@ export class DependencyResolver {
   private fileExtensionCache: Map<string, string[]>;
 
   constructor(private readonly projectRoot: string) {
-    this.baseUrl = projectRoot;
-    this.aliases = [];
+    this.tsJsContexts = [];
+    this.localPackages = new Map();
     this.goModulePath = null;
     this.composerPsr4Mappings = [];
     this.javaIndex = null;
@@ -162,7 +324,8 @@ export class DependencyResolver {
   }
 
   reload(): void {
-    this.loadTsConfig();
+    this.loadTsJsContexts();
+    this.loadLocalPackages();
     this.loadGoModule();
     this.loadComposerMappings();
     this.javaIndex = null;
@@ -200,27 +363,141 @@ export class DependencyResolver {
     }
   }
 
-  private loadTsConfig(): void {
-    const tsconfigPath = path.join(this.projectRoot, "tsconfig.json");
-    if (!fs.existsSync(tsconfigPath)) {
-      this.baseUrl = this.projectRoot;
-      this.aliases = [];
-      return;
+  private loadTsJsContexts(): void {
+    const discoveredContexts = TS_CONFIG_FILE_NAMES.flatMap((fileName) => this.getProjectFilesByBasename(fileName));
+    const contextPaths = dedupePreserveOrder(discoveredContexts).sort((left, right) => left.localeCompare(right));
+    const collectedContexts = new Map<string, TsConfigContext>();
+    const cache = new Map<string, TsConfigContext | null>();
+
+    for (const relativeConfigPath of contextPaths) {
+      const context = this.loadMergedTsJsContext(path.join(this.projectRoot, relativeConfigPath), cache, new Set<string>());
+      if (context) {
+        collectedContexts.set(context.configPath, context);
+      }
     }
 
-    const raw = JSON.parse(fs.readFileSync(tsconfigPath, "utf8")) as {
+    this.tsJsContexts = Array.from(collectedContexts.values())
+      .sort((left, right) => right.rootPath.length - left.rootPath.length || left.configPath.localeCompare(right.configPath));
+  }
+
+  private loadMergedTsJsContext(
+    configPath: string,
+    cache: Map<string, TsConfigContext | null>,
+    stack: Set<string>
+  ): TsConfigContext | null {
+    const resolvedConfigPath = path.resolve(configPath);
+    if (cache.has(resolvedConfigPath)) {
+      return cache.get(resolvedConfigPath) ?? null;
+    }
+
+    if (stack.has(resolvedConfigPath)) {
+      return null;
+    }
+
+    stack.add(resolvedConfigPath);
+    const source = readTextFile(resolvedConfigPath);
+    if (!source) {
+      cache.set(resolvedConfigPath, null);
+      stack.delete(resolvedConfigPath);
+      return null;
+    }
+
+    const raw = JSON.parse(source) as {
+      extends?: string;
       compilerOptions?: {
         baseUrl?: string;
         paths?: Record<string, string[]>;
       };
     };
 
-    this.baseUrl = path.resolve(this.projectRoot, raw.compilerOptions?.baseUrl ?? ".");
-    this.aliases = Object.entries(raw.compilerOptions?.paths ?? {}).map(([pattern, targets]) => ({
-      pattern,
-      targets,
-      hasWildcard: pattern.includes("*")
-    }));
+    const extendedConfigPath = raw.extends ? resolveConfigExtendsPath(resolvedConfigPath, raw.extends) : null;
+    const parentContext = extendedConfigPath
+      ? this.loadMergedTsJsContext(extendedConfigPath, cache, stack)
+      : null;
+
+    const configDirectory = path.dirname(resolvedConfigPath);
+    const compilerOptions = raw.compilerOptions ?? {};
+    const contextKey = normalizeRelativePath(path.relative(this.projectRoot, resolvedConfigPath));
+    const ownBaseUrl = compilerOptions.baseUrl
+      ? path.resolve(configDirectory, compilerOptions.baseUrl)
+      : (parentContext?.baseUrl ?? configDirectory);
+    const context: TsConfigContext = {
+      configPath: contextKey,
+      rootPath: normalizeRelativePath(path.relative(this.projectRoot, configDirectory)) || ".",
+      baseUrl: ownBaseUrl,
+      aliases: mergeConfigAliases(parentContext?.aliases ?? [], normalizeConfigAliases(compilerOptions.paths, ownBaseUrl))
+    };
+
+    cache.set(resolvedConfigPath, context);
+    stack.delete(resolvedConfigPath);
+    return context;
+  }
+
+  private loadLocalPackages(): void {
+    const packagePaths = this.getProjectFilesByBasename("package.json");
+    const workspacePatterns = this.getWorkspacePatterns(packagePaths);
+    this.localPackages = new Map();
+
+    for (const relativePackagePath of packagePaths) {
+      const manifest = readJsonFile<{
+        name?: string;
+        main?: string;
+        module?: string;
+        types?: string;
+        source?: string;
+        exports?: unknown;
+      }>(path.join(this.projectRoot, relativePackagePath));
+
+      if (!manifest?.name) {
+        continue;
+      }
+
+      const rootPath = normalizeRelativePath(path.dirname(relativePackagePath)) || ".";
+      if (workspacePatterns.length > 0 && !workspacePatterns.some((pattern) => pattern.test(rootPath))) {
+        continue;
+      }
+
+      this.localPackages.set(manifest.name, {
+        name: manifest.name,
+        rootPath,
+        absoluteRoot: path.join(this.projectRoot, rootPath === "." ? "" : rootPath),
+        manifest: {
+          main: manifest.main,
+          module: manifest.module,
+          types: manifest.types,
+          source: manifest.source,
+          exports: manifest.exports
+        }
+      });
+    }
+  }
+
+  private getWorkspacePatterns(packagePaths: string[]): RegExp[] {
+    const patterns: RegExp[] = [];
+
+    for (const relativePackagePath of packagePaths) {
+      const manifest = readJsonFile<{ workspaces?: WorkspaceField }>(path.join(this.projectRoot, relativePackagePath));
+      const workspaceField = manifest?.workspaces;
+      const declaredPatterns = Array.isArray(workspaceField)
+        ? workspaceField
+        : Array.isArray(workspaceField?.packages)
+          ? workspaceField.packages
+          : [];
+      const manifestRoot = normalizeRelativePath(path.dirname(relativePackagePath)) || ".";
+
+      for (const pattern of declaredPatterns) {
+        if (!pattern || typeof pattern !== "string") {
+          continue;
+        }
+
+        const normalizedPattern = normalizeRelativePath(
+          manifestRoot === "." ? pattern : path.posix.join(manifestRoot, pattern)
+        );
+        patterns.push(workspacePatternToRegex(normalizedPattern));
+      }
+    }
+
+    return patterns;
   }
 
   private loadGoModule(): void {
@@ -272,19 +549,120 @@ export class DependencyResolver {
       return toInternalResolution(this.projectRoot, resolved);
     }
 
-    for (const alias of this.aliases) {
-      const resolved = resolveAliasTarget(specifier, alias, this.baseUrl);
-      if (resolved) {
-        return toInternalResolution(this.projectRoot, resolved);
+    const relevantContexts = this.getTsJsContextsForSource(sourceRelativePath);
+    for (const context of relevantContexts) {
+      for (const alias of context.aliases) {
+        const resolved = resolveAliasTarget(specifier, alias);
+        if (resolved) {
+          return toInternalResolution(this.projectRoot, resolved);
+        }
       }
     }
 
-    const hasAliasPrefix = this.aliases.some((alias) => specifier.startsWith(alias.pattern.replace("*", "")));
+    const localPackageResolution = this.resolveLocalPackage(specifier);
+    if (localPackageResolution) {
+      return localPackageResolution;
+    }
+
+    const hasAliasPrefix = relevantContexts.some((context) =>
+      context.aliases.some((alias) => specifier.startsWith(alias.pattern.replace("*", "")))
+    );
     if (hasAliasPrefix) {
       return { external: false, unresolved: true };
     }
 
+    if (this.localPackages.has(parsePackageSpecifier(specifier).packageName)) {
+      return { external: false, unresolved: true };
+    }
+
     return { external: true, unresolved: false };
+  }
+
+  private getTsJsContextsForSource(sourceRelativePath: string): TsConfigContext[] {
+    const normalizedSourcePath = normalizeRelativePath(sourceRelativePath);
+    const matchingContexts = this.tsJsContexts.filter((context) => {
+      if (context.rootPath === "." || context.rootPath === "") {
+        return true;
+      }
+
+      return normalizedSourcePath === context.rootPath || normalizedSourcePath.startsWith(`${context.rootPath}/`);
+    });
+
+    return matchingContexts.length > 0
+      ? matchingContexts
+      : [
+          {
+            configPath: ".",
+            rootPath: ".",
+            baseUrl: this.projectRoot,
+            aliases: []
+          }
+        ];
+  }
+
+  private resolveLocalPackage(specifier: string): ImportResolution | null {
+    const { packageName, subpath } = parsePackageSpecifier(specifier);
+    const localPackage = this.localPackages.get(packageName);
+    if (!localPackage) {
+      return null;
+    }
+
+    const candidates = subpath ? this.getLocalPackageSubpathCandidates(localPackage, subpath) : this.getLocalPackageRootCandidates(localPackage);
+    for (const candidate of candidates) {
+      const resolved = resolveCandidate(candidate, TS_JS_RESOLUTION_EXTENSIONS);
+      if (!resolved) {
+        continue;
+      }
+
+      return toInternalResolution(this.projectRoot, resolved);
+    }
+
+    return {
+      external: false,
+      unresolved: true
+    };
+  }
+
+  private getLocalPackageRootCandidates(localPackage: LocalPackageDefinition): string[] {
+    const manifestCandidates = [
+      ...collectExportTargets(localPackage.manifest.exports, ""),
+      localPackage.manifest.source,
+      localPackage.manifest.types,
+      localPackage.manifest.module,
+      localPackage.manifest.main
+    ].filter((value): value is string => Boolean(value));
+
+    return dedupePreserveOrder(
+      [
+        ...manifestCandidates.flatMap((candidate) => this.createLocalPackageCandidatePaths(localPackage, candidate)),
+        ...SOURCE_SHADOW_DIRECTORIES.map((directoryName) => path.join(localPackage.absoluteRoot, directoryName, "index")),
+        path.join(localPackage.absoluteRoot, "index")
+      ]
+    );
+  }
+
+  private getLocalPackageSubpathCandidates(localPackage: LocalPackageDefinition, subpath: string): string[] {
+    const exportCandidates = collectExportTargets(localPackage.manifest.exports, subpath);
+
+    return dedupePreserveOrder(
+      [
+        ...exportCandidates.flatMap((candidate) => this.createLocalPackageCandidatePaths(localPackage, candidate)),
+        path.join(localPackage.absoluteRoot, subpath),
+        ...SOURCE_SHADOW_DIRECTORIES.map((directoryName) => path.join(localPackage.absoluteRoot, directoryName, subpath))
+      ]
+    );
+  }
+
+  private createLocalPackageCandidatePaths(localPackage: LocalPackageDefinition, candidate: string): string[] {
+    const normalizedCandidate = normalizeRelativePath(candidate).replace(/^\.\//u, "");
+    const candidatePaths = [path.join(localPackage.absoluteRoot, normalizedCandidate)];
+    const shadowRelativePath = normalizedCandidate.replace(/^(dist|build|lib)\//u, "");
+
+    if (shadowRelativePath !== normalizedCandidate) {
+      candidatePaths.push(...SOURCE_SHADOW_DIRECTORIES.map((directoryName) => path.join(localPackage.absoluteRoot, directoryName, shadowRelativePath)));
+    }
+
+    return candidatePaths;
   }
 
   private resolvePython(specifier: string, sourceRelativePath: string): ImportResolution {
@@ -598,6 +976,40 @@ export class DependencyResolver {
     walk(this.projectRoot);
     files.sort((left, right) => left.localeCompare(right));
     this.fileExtensionCache.set(extension, files);
+    return files;
+  }
+
+  private getProjectFilesByBasename(basename: string): string[] {
+    const cacheKey = `basename:${basename}`;
+    if (this.fileExtensionCache.has(cacheKey)) {
+      return this.fileExtensionCache.get(cacheKey) ?? [];
+    }
+
+    const files: string[] = [];
+    const walk = (directoryPath: string): void => {
+      const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && IGNORED_WALK_DIRECTORIES.has(entry.name)) {
+          continue;
+        }
+
+        const absolutePath = path.join(directoryPath, entry.name);
+        if (entry.isDirectory()) {
+          walk(absolutePath);
+          continue;
+        }
+
+        if (!entry.isFile() || entry.name !== basename) {
+          continue;
+        }
+
+        files.push(normalizeRelativePath(path.relative(this.projectRoot, absolutePath)));
+      }
+    };
+
+    walk(this.projectRoot);
+    files.sort((left, right) => left.localeCompare(right));
+    this.fileExtensionCache.set(cacheKey, files);
     return files;
   }
 }

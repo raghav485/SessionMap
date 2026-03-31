@@ -94,7 +94,8 @@ describe("mcp service", () => {
         }
       ],
       getWatcherRunning: () => true,
-      getActiveExplicitSessionId: () => null,
+      getTrackingMode: () => "auto",
+      getActiveSessionId: () => null,
       startExplicitSession,
       endExplicitSession
     });
@@ -141,6 +142,14 @@ describe("mcp service", () => {
       source: "explicit-mcp"
     });
 
+    await service.beginSession({
+      intent: "review recent work"
+    });
+    expect(startExplicitSession).toHaveBeenLastCalledWith({
+      intent: "review recent work",
+      source: "explicit-mcp"
+    });
+
     await service.endSession("session-started", {
       exitCode: 0
     });
@@ -162,7 +171,8 @@ describe("mcp service", () => {
       projectRoot,
       rules: [],
       getWatcherRunning: () => true,
-      getActiveExplicitSessionId: () => null,
+      getTrackingMode: () => "auto",
+      getActiveSessionId: () => null,
       startExplicitSession: async () => ({
         sessionId: "session-tier2",
         startedAt: "2026-03-27T12:00:00.000Z"

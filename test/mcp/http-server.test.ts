@@ -1,4 +1,6 @@
+import fs from "node:fs/promises";
 import http from "node:http";
+import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -58,7 +60,11 @@ describe("mcp http server", () => {
   test("serves the MCP catalog over authenticated loopback streamable HTTP", async () => {
     projectRoot = await copyFixtureToTempDir("sample-project");
     await runCli(["start", "--project-root", projectRoot], projectRoot);
-    await runCli(["track", "--project-root", projectRoot, "--", "node", "scripts/change-math.js"], projectRoot);
+    await fs.writeFile(
+      path.join(projectRoot, "src", "utils", "math.ts"),
+      "export function add(left: number, right: number): number {\n  return left + right + 13;\n}\n",
+      "utf8"
+    );
     await runCli(["generate", "--project-root", projectRoot], projectRoot);
 
     const manifest = await readDaemonManifest(projectRoot);
@@ -153,7 +159,7 @@ describe("mcp http server", () => {
       const latestSession = latestSessionResult.structuredContent as {
         session: { source: string; id: string };
       };
-      expect(latestSession.session.source).toBe("explicit-wrapper");
+      expect(latestSession.session.source).toBe("auto-daemon");
       expect(latestSession.session.id).toBeTruthy();
 
       const dependencyResult = await client.callTool({

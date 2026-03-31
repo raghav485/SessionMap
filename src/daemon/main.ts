@@ -103,7 +103,8 @@ class SessionMapDaemonRuntime {
     this.sessionTracker = new SessionTracker(
       this.store,
       new SessionInferrer(this.store, config.session.inactivityGapMs),
-      config.session.captureStdout
+      config.session.captureStdout,
+      config.session.inactivityGapMs
     );
     this.generatorService = new GeneratorService({
       store: this.store,
@@ -156,7 +157,8 @@ class SessionMapDaemonRuntime {
       projectRoot: this.projectRoot,
       rules: this.analysisContext.config.rules,
       getWatcherRunning: () => this.watcher.isRunning(),
-      getActiveExplicitSessionId: () => this.sessionTracker.getActiveExplicitSessionId(),
+      getTrackingMode: () => this.sessionTracker.getTrackingMode(),
+      getActiveSessionId: () => this.sessionTracker.getActiveSessionId(),
       startExplicitSession: async (request) => this.startExplicitSession(request),
       endExplicitSession: async (sessionId, request) => this.endExplicitSession(sessionId, request)
     });
@@ -206,7 +208,8 @@ class SessionMapDaemonRuntime {
       projectName: this.projectName,
       projectRoot: this.projectRoot,
       getWatcherRunning: () => this.watcher.isRunning(),
-      getActiveExplicitSessionId: () => this.sessionTracker.getActiveExplicitSessionId(),
+      getTrackingMode: () => this.sessionTracker.getTrackingMode(),
+      getActiveSessionId: () => this.sessionTracker.getActiveSessionId(),
       eventBus: this.eventBus,
       port: this.analysisContext.config.ports.webPort,
       host: DEFAULT_WEB_HOST
@@ -231,6 +234,7 @@ class SessionMapDaemonRuntime {
         });
       });
     };
+    this.sessionTracker.armAutoTracking();
     await this.watcher.start();
     writeManifest(this.projectRoot, this.manifest);
     logger.info("Daemon started", {
@@ -260,7 +264,8 @@ class SessionMapDaemonRuntime {
       sessionCount: state.sessions.length,
       changeSetCount: state.changeSets.length,
       watcherRunning: this.watcher.isRunning(),
-      activeExplicitSessionId: this.sessionTracker.getActiveExplicitSessionId() ?? undefined,
+      trackingMode: this.sessionTracker.getTrackingMode(),
+      activeSessionId: this.sessionTracker.getActiveSessionId() ?? undefined,
       lastScanSummary: state.metadata.lastScanSummary,
       lastIncrementalUpdateMs: state.metadata.lastIncrementalUpdateMs,
       lastGeneratedAt: state.generatedContext.lastGeneratedAt,
@@ -355,6 +360,7 @@ class SessionMapDaemonRuntime {
     await this.watcher.stop();
     await this.changeTracker.flush();
     await this.pendingChangeProcessing;
+    this.sessionTracker.disarmAutoTracking();
     this.store.persist();
     if (this.webApp) {
       await this.webApp.close();

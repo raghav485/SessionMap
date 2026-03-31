@@ -179,7 +179,8 @@ export function buildDashboardOverview(
     projectName: string;
     projectRoot: string;
     watcherRunning: boolean;
-    activeExplicitSessionId?: string;
+    trackingMode: "auto" | "explicit-mcp" | "idle";
+    activeSessionId?: string;
   }
 ): DashboardOverviewResponse {
   const state = store.getState();
@@ -188,7 +189,8 @@ export function buildDashboardOverview(
     projectName: options.projectName,
     projectRoot: options.projectRoot,
     watcherRunning: options.watcherRunning,
-    activeExplicitSessionId: options.activeExplicitSessionId,
+    trackingMode: options.trackingMode,
+    activeSessionId: options.activeSessionId,
     counts: {
       nodes: state.nodes.length,
       edges: state.edges.length,

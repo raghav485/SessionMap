@@ -54,7 +54,8 @@ export interface LocalMcpServiceOptions {
   projectRoot: string;
   rules: ArchitectureRule[];
   getWatcherRunning(): boolean;
-  getActiveExplicitSessionId(): string | null;
+  getTrackingMode(): "auto" | "explicit-mcp" | "idle";
+  getActiveSessionId(): string | null;
   startExplicitSession(request: ExplicitSessionStartRequest): Promise<ExplicitSessionStartResponse>;
   endExplicitSession(sessionId: string, request: ExplicitSessionEndRequest): Promise<ActivitySession>;
 }
@@ -66,7 +67,8 @@ export function createLocalMcpService(options: LocalMcpServiceOptions): McpServi
         projectName: options.projectName,
         projectRoot: options.projectRoot,
         watcherRunning: options.getWatcherRunning(),
-        activeExplicitSessionId: options.getActiveExplicitSessionId() ?? undefined
+        trackingMode: options.getTrackingMode(),
+        activeSessionId: options.getActiveSessionId() ?? undefined
       });
     },
 
@@ -148,8 +150,7 @@ export function createRemoteMcpService(manifest: DaemonManifest): McpService {
     async beginSession(request: ExplicitSessionStartRequest): Promise<ExplicitSessionStartResponse> {
       return startRemoteExplicitSession(manifest, {
         ...request,
-        source: request.source ?? "explicit-mcp",
-        agentCommand: request.agentCommand
+        source: request.source ?? "explicit-mcp"
       });
     },
 

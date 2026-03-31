@@ -18,3 +18,9 @@
 - For npm packaging smoke tests, extracted-tarball runtime checks are more reliable than relying on `npm exec` cache state in sandboxed or mixed-permission environments.
 - In install docs, describe the analyzed repo generically as the user's target project; do not hardcode or name a specific example project unless the user explicitly asks for that exact example.
 - When npm publish is deferred and users still want the simplest install path, default to `npm install -g .` from the cloned repo; keep `npm link` as a contributor convenience, not the primary user flow.
+- For project-scale visualizations, default to a signal-preserving overview instead of rendering every file node; users need readable structure before exhaustive completeness.
+- For project graphs, persisted `moduleBoundary` is not enough as the sole UI grouping heuristic; shallow and root-heavy repos need graph-specific grouping plus support-file filtering to read as architecture.
+- For architecture-first project graphs, strict filtering needs a sparse fallback; an empty graph is worse than a filtered side-list that still lets users inspect hidden structure.
+- When users ask for a root-cause fix rather than a project-specific patch, favor generic architecture signals such as nested manifests, nearest config contexts, and statically declared entrypoints over repo-name or folder-name exceptions.
+- When focused architecture graphs turn into hub-and-spoke file sprays, switch to hierarchical directory-first drilldown and only reveal raw files at the deepest relevant layer instead of adding another flat-file filter.
+- When session-tracking workflow changes, update the CLI, dashboard copy, README, and PRD/TRD in the same task; users should never see conflicting guidance about whether tracking is automatic or wrapper-driven.

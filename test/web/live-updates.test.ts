@@ -39,7 +39,29 @@ describe("web live updates", () => {
     await runCli(["generate", "--project-root", projectRoot], projectRoot);
     await pollUntil(() => messages.some((message) => message.reason === "generation-completed"), 8000);
 
-    await runCli(["track", "--project-root", projectRoot, "--", "node", "scripts/noop.js"], projectRoot);
+    const started = await fetch(`${manifest.controlUrl}/v1/sessions/explicit/start`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${manifest.authToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        source: "explicit-mcp",
+        intent: "validate live updates"
+      })
+    });
+    const startedBody = (await started.json()) as { sessionId: string };
+
+    await fetch(`${manifest.controlUrl}/v1/sessions/explicit/${encodeURIComponent(startedBody.sessionId)}/end`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${manifest.authToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        exitCode: 0
+      })
+    });
 
     await pollUntil(
       () =>

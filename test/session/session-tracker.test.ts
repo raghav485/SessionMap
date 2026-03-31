@@ -33,7 +33,7 @@ describe("session tracker", () => {
     const store = new JsonGraphStore(path.join(projectRoot, ".sessionmap", "state", "store.json"));
     store.replace(createState(projectRoot));
 
-    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true);
+    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true, 180000);
     const started = tracker.startExplicitSession({ agentCommand: "node scripts/noop.js", source: "explicit-wrapper" });
     const ended = tracker.endExplicitSession(started.sessionId, { agentStdout: "no changes", exitCode: 0 });
 
@@ -41,14 +41,59 @@ describe("session tracker", () => {
     expect(store.getSessions()).toHaveLength(1);
   });
 
-  test("attaches change sets to the active explicit session before inferred ones", async () => {
+  test("arms auto tracking without creating an empty session", async () => {
     const projectRoot = await copyFixtureToTempDir("sample-project");
     const store = new JsonGraphStore(path.join(projectRoot, ".sessionmap", "state", "store.json"));
     store.replace(createState(projectRoot));
 
-    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true);
+    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true, 180000);
+    tracker.armAutoTracking();
+
+    expect(tracker.getTrackingMode()).toBe("auto");
+    expect(tracker.getActiveSessionId()).toBeNull();
+    expect(store.getSessions()).toHaveLength(0);
+  });
+
+  test("creates auto-daemon sessions when auto tracking is armed", async () => {
+    const projectRoot = await copyFixtureToTempDir("sample-project");
+    const store = new JsonGraphStore(path.join(projectRoot, ".sessionmap", "state", "store.json"));
+    store.replace(createState(projectRoot));
+
+    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true, 180000);
+    tracker.armAutoTracking();
+
+    const changeSet: ChangeSet = {
+      id: "changeset-auto-1",
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+      source: "watcher-inferred",
+      events: []
+    };
+    const impact: ChangeSetImpact = {
+      touchedPaths: ["src/utils/math.ts"],
+      touchedModules: ["src/utils"],
+      impactedDependents: ["src/index.ts"],
+      impactedDependentModules: ["src"],
+      durationMs: 20
+    };
+
+    const created = tracker.recordChangeSet(changeSet, impact);
+    expect(created.source).toBe("auto-daemon");
+    expect(created.actor).toBe("agent");
+    expect(created.touchedPaths).toContain("src/utils/math.ts");
+    expect(tracker.getTrackingMode()).toBe("auto");
+    expect(tracker.getActiveSessionId()).toBe(created.id);
+    expect(store.getChangeSets()[0]?.source).toBe("auto-daemon");
+  });
+
+  test("attaches change sets to the active explicit session before auto sessions", async () => {
+    const projectRoot = await copyFixtureToTempDir("sample-project");
+    const store = new JsonGraphStore(path.join(projectRoot, ".sessionmap", "state", "store.json"));
+    store.replace(createState(projectRoot));
+
+    const tracker = new SessionTracker(store, new SessionInferrer(store, 180000), true, 180000);
+    tracker.armAutoTracking();
     const started = tracker.startExplicitSession({
-      agentCommand: "node scripts/change-math.js",
       source: "explicit-mcp"
     });
 
@@ -72,5 +117,8 @@ describe("session tracker", () => {
     expect(updated.source).toBe("explicit-mcp");
     expect(updated.touchedPaths).toContain("src/utils/math.ts");
     expect(store.getChangeSets()[0]?.source).toBe("explicit-mcp");
+    expect(tracker.getTrackingMode()).toBe("explicit-mcp");
+    tracker.endExplicitSession(started.sessionId, { exitCode: 0 });
+    expect(tracker.getTrackingMode()).toBe("auto");
   });
 });

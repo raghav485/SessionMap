@@ -1,8 +1,11 @@
 export type Provenance = "ast" | "heuristic" | "llm" | "user";
 
 export type LanguageTier = 1 | 2 | 3;
-export type SessionSource = "explicit-wrapper" | "explicit-mcp" | "watcher-inferred" | "git-enriched";
+export type GraphGranularity = "file" | "module";
+export type GraphRelationshipSource = "import" | "package" | "entrypoint";
+export type SessionSource = "auto-daemon" | "explicit-wrapper" | "explicit-mcp" | "watcher-inferred" | "git-enriched";
 export type SessionActor = "agent" | "human" | "mixed" | "unknown";
+export type TrackingMode = "auto" | "explicit-mcp" | "idle";
 export type ChangeOperation = "add" | "change" | "unlink" | "rename";
 export type ExplicitSessionSource = Extract<SessionSource, "explicit-wrapper" | "explicit-mcp">;
 export type DependencyDirection = "dependencies" | "dependents" | "both";
@@ -265,7 +268,8 @@ export interface DaemonStatusResponse {
   sessionCount: number;
   changeSetCount: number;
   watcherRunning: boolean;
-  activeExplicitSessionId?: string;
+  trackingMode: TrackingMode;
+  activeSessionId?: string;
   lastScanSummary?: ScanSummary;
   lastIncrementalUpdateMs?: number;
   lastGeneratedAt?: string;
@@ -304,7 +308,7 @@ export type ExplainResponse = FileExplainResponse | DirectoryExplainResponse;
 
 export interface ExplicitSessionStartRequest {
   intent?: string;
-  agentCommand: string;
+  agentCommand?: string;
   source?: ExplicitSessionSource;
 }
 
@@ -383,7 +387,8 @@ export interface DashboardOverviewResponse {
   projectName: string;
   projectRoot: string;
   watcherRunning: boolean;
-  activeExplicitSessionId?: string;
+  trackingMode: TrackingMode;
+  activeSessionId?: string;
   counts: DashboardCounts;
   techStack: TechStackSummary;
   lastScanSummary?: ScanSummary;
@@ -401,6 +406,7 @@ export interface GraphNodeResponse {
   type: "file" | "directory" | "module";
   language: string;
   moduleBoundary?: string;
+  architectureUnit?: string;
   tier: LanguageTier;
   touched: boolean;
   impacted: boolean;
@@ -412,13 +418,54 @@ export interface GraphEdgeResponse {
   target: string;
   type: ProjectEdge["type"];
   weight: number;
+  relationshipSources: GraphRelationshipSource[];
+}
+
+export type GraphHiddenCategory = "isolated" | "tests" | "config" | "assets" | "other-support";
+
+export interface GraphHiddenSummaryItem {
+  category: GraphHiddenCategory;
+  count: number;
+  label: string;
+}
+
+export interface GraphHiddenPreviewItem {
+  path: string;
+  label: string;
+  type: "file" | "module" | "directory";
+}
+
+export interface GraphHiddenPreviewGroup {
+  category: GraphHiddenCategory;
+  truncated: boolean;
+  items: GraphHiddenPreviewItem[];
+}
+
+export interface GraphFocusResponse {
+  path: string;
+  label: string;
+}
+
+export interface GraphDrilldownResponse {
+  path: string;
+  relativePath: string;
+  label: string;
 }
 
 export interface GraphResponse {
   scope: "latest-session" | "project";
+  granularity: GraphGranularity;
   nodeCount: number;
   edgeCount: number;
   truncated: boolean;
+  fallbackApplied: boolean;
+  focusApplied: boolean;
+  focus?: GraphFocusResponse;
+  drilldown?: GraphDrilldownResponse;
+  drilldownTrail: GraphDrilldownResponse[];
+  hiddenIsolatedCount: number;
+  hiddenSummary: GraphHiddenSummaryItem[];
+  hiddenPreview: GraphHiddenPreviewGroup[];
   nodes: GraphNodeResponse[];
   edges: GraphEdgeResponse[];
 }

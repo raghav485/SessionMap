@@ -26,7 +26,7 @@ export function renderSessionDigest(detail: SessionDetailResponse | null): HTMLE
   } else {
     const meta = document.createElement("p");
     meta.className = "panel-subtitle";
-    meta.textContent = "Run sessionmap track -- <command...> to capture the next working session.";
+    meta.textContent = "Start SessionMap and make changes to capture the next working session automatically.";
     header.appendChild(meta);
   }
 
@@ -36,7 +36,7 @@ export function renderSessionDigest(detail: SessionDetailResponse | null): HTMLE
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.innerHTML = `
-      <p>SessionMap is already analyzing the project and tracking file changes.</p>
+      <p>SessionMap is already analyzing the project and will automatically capture the next session once changes begin.</p>
       <p>The dashboard will surface the latest touched modules, impacted files, and review order once a session is captured.</p>
     `;
     section.appendChild(empty);

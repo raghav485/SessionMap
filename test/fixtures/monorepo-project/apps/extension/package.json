@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/extension",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fixture/contracts": "workspace:*"
+  }
+}

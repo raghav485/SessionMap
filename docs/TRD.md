@@ -125,7 +125,6 @@ src/
 │   ├── change-tracker.ts
 │   ├── inferrer.ts
 │   ├── session-tracker.ts
-│   └── wrapper.ts
 ├── web/
 │   ├── server.ts
 │   ├── routes.ts
@@ -174,7 +173,7 @@ docs/
 
 ```ts
 type Provenance = 'ast' | 'heuristic' | 'llm' | 'user';
-type SessionSource = 'explicit-wrapper' | 'explicit-mcp' | 'watcher-inferred' | 'git-enriched';
+type SessionSource = 'auto-daemon' | 'explicit-wrapper' | 'explicit-mcp' | 'watcher-inferred' | 'git-enriched';
 type SessionActor = 'agent' | 'human' | 'mixed' | 'unknown';
 
 interface ProjectNode {
@@ -425,6 +424,10 @@ interface DaemonManifest {
    - Parse TS/JS with `web-tree-sitter` when grammar support is available
    - Fall back to Tier 3 indexing on parser failure or unsupported languages
 4. Resolve internal dependencies and record unresolved or external imports in metadata.
+   - Relative imports remain the baseline path.
+   - TS/JS resolution must use the nearest relevant `tsconfig.json` or `jsconfig.json` context, including inherited `extends` chains merged in importer scope.
+   - Local workspace/package imports should resolve to local source entrypoints when descendant package manifests expose a matching package name, and declared package-manager workspaces should constrain which nested packages are treated as local workspace packages.
+   - Statically declared entry relationships from package manifests, browser manifests, and bundler entry inputs may add architecture relationships without executing arbitrary user config.
 5. Build graph nodes and edges.
 6. Persist JSON state without raw file contents.
 7. Use incremental touched-file graph updates during normal watcher operation.
@@ -467,9 +470,10 @@ interface IGraphStore {
 
 - `watcher/file-watcher.ts` emits raw `add`, `change`, and `unlink` events only.
 - `session/change-tracker.ts` debounces raw watcher events into `ChangeSet`s.
-- `session/session-tracker.ts` owns explicit sessions and inferred session clustering.
+- `session/session-tracker.ts` owns daemon-armed automatic tracking, explicit MCP sessions, and inferred session clustering.
+- `sessionmap start` arms automatic tracking without creating an empty session up front; the first post-start change opens the next `auto-daemon` session lazily.
 - `session/inferrer.ts` merges change sets into inferred sessions using inactivity gap plus path and graph locality.
-- Explicit sessions take precedence over inferred session creation and merging.
+- Explicit MCP sessions take precedence over automatic session creation and merging while active.
 - Normal watcher traffic updates only touched files and directly affected dependents.
 
 ### 3.9 Web Adapter
@@ -481,16 +485,26 @@ interface IGraphStore {
   - `GET /api/sessions?limit=...`
   - `GET /api/sessions/latest`
   - `GET /api/sessions/:id`
-  - `GET /api/graph?scope=...`
+  - `GET /api/graph?scope=...&granularity=module|file&showHidden=true|false&focus=<architecture-unit>&drilldown=<relative-directory-path>`
   - `GET /api/explorer?path=...`
   - `GET /api/search?q=...`
   - `GET /api/tech-stack`
 - Live updates are delivered over `GET /ws`.
 - The frontend uses hash routes only:
   - `#/sessions`
-  - `#/graph?scope=latest-session|project`
+  - `#/graph?scope=latest-session|project&focus=<architecture-unit>&drilldown=<relative-directory-path>`
   - `#/explorer?path=...`
 - The Sessions view is the default landing experience and must surface the latest session digest first.
+- The Graph view must support wheel/trackpad zoom, background drag pan, visible zoom controls, and fit/reset without changing backend graph APIs.
+- The Project graph defaults to module granularity, but it is architecture-first rather than exhaustive: it projects files into higher-level architecture units by preferring nested package/app roots and statically declared entrypoint roots, then falling back to source-root or feature-folder heuristics for simpler repos.
+- Project graph responses hide support/noise files and untouched isolated architecture nodes by default, but touched or impacted work from the latest session remains visible even if it would normally be hidden.
+- The dashboard surfaces clickable hidden-category summary chips plus a `Show Hidden` recovery toggle so users can inspect filtered config, test, asset, and isolated nodes without losing the default architectural view.
+- If a filtered Project graph would otherwise show fewer than three nodes, the dashboard applies a sparse fallback: it keeps the graph filtered, auto-opens a hidden-items side list, and defaults that list to hidden isolated architecture items when available.
+- Project overview node clicks enter Focus Mode for that architecture unit; once focused, the graph drills through that unit hierarchically by directory, keeps root orchestration files visible when they connect across sibling directories, and only drops to raw files at the deepest relevant layer.
+- Focus Mode exposes `drilldown` plus breadcrumb metadata so the dashboard can step through a focused unit without exploding the whole repo into one flat file spray.
+- Graph node responses expose their owning architecture unit, and aggregated project edges carry relationship-source kinds such as `import`, `package`, or `entrypoint` so the UI can explain why overview units are connected.
+- Runtime-only relationships such as HTTP boundaries, Chrome message buses, registries, and env-selected wiring remain future detector work; the architecture overview currently reflects generic statically discoverable structure only.
+- Graph viewport state is preserved during same-scope refreshes and live updates, but it resets to fit-to-view when the user changes graph scope or leaves and re-enters the Graph route.
 - The web adapter is loopback-only and unauthenticated in Milestone 3.
 
 ### 3.10 MCP Adapter
@@ -550,7 +564,7 @@ interface IGraphStore {
 - `engine/` performs scanning, parsing, and extraction only.
 - `graph/` owns graph state, persistence, and queries only.
 - `watcher/` emits file events only.
-- `session/` owns change grouping, inference, and explicit session lifecycle only.
+- `session/` owns change grouping, inference, automatic session attribution, and explicit MCP session lifecycle only.
 - `web/` owns HTTP, static assets, and live-update delivery only.
 - `mcp/` owns MCP registration, transports, and serialization only.
 - `generator/` owns context snapshots, markdown rendering, and file output only.
@@ -564,7 +578,7 @@ interface IGraphStore {
 - Daemon control traffic is loopback-only with bearer-token auth.
 - MCP HTTP traffic is loopback-only with bearer-token auth and loopback host validation.
 - Runtime logs must go to stderr.
-- Wrapper stdout capture is local-only and bounded by config.
+- Explicit session stdout capture is local-only and bounded by config.
 - MCP prompts and tools must never embed raw source or unbounded session stdout.
 - Generated markdown must never contain raw source code.
 - LLM provider requests may read bounded source text only after explicit user opt-in via config and key.
@@ -577,10 +591,10 @@ interface IGraphStore {
 | Engine | Fixture-based tests for scanning, parsing, and dependency extraction |
 | Graph | Unit tests for graph build/query/persistence |
 | Watcher | Integration tests for ignore behavior and event emission |
-| Session | Unit and integration tests for debounce, inference, and explicit tracking |
+| Session | Unit and integration tests for debounce, automatic tracking, inference, and explicit MCP overrides |
 | Daemon | Integration tests for manifest lifecycle and control API auth |
-| CLI | Integration tests for `start`, `status`, `scan`, `explain`, `track`, `sessions`, and `stop` |
-| Web | Route tests, live-update integration tests, and a Playwright dashboard smoke test |
+| CLI | Integration tests for `start`, `status`, `scan`, `explain`, `sessions`, `generate`, and `stop` |
+| Web | Route tests, live-update integration tests, and a Playwright dashboard smoke test that covers graph navigation and Explorer drill-in |
 | MCP | Service, Streamable HTTP, and stdio bridge tests covering tools, resources, prompts, and session attribution |
 | Generator | Deterministic artifact generation tests and CLI/control endpoint tests |
 | LLM | Unit tests for provider request/response mapping and structural fallback behavior |

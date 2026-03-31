@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import {
   DEFAULT_GRAPH_LATEST_SESSION_LIMIT,
+  DEFAULT_GRAPH_PROJECT_MODULE_LIMIT,
   DEFAULT_GRAPH_PROJECT_LIMIT,
   DEFAULT_RELATED_SESSIONS_LIMIT,
   DEFAULT_SEARCH_LIMIT,
@@ -19,14 +20,15 @@ import {
   buildSessionDetail,
   buildSessionSummaries
 } from "../session/session-query.js";
-import type { IGraphStore } from "../types.js";
+import type { GraphGranularity, IGraphStore } from "../types.js";
 
 export interface WebRouteOptions {
   store: IGraphStore;
   projectName: string;
   projectRoot: string;
   getWatcherRunning(): boolean;
-  getActiveExplicitSessionId(): string | null;
+  getTrackingMode(): "auto" | "explicit-mcp" | "idle";
+  getActiveSessionId(): string | null;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -38,19 +40,37 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return fallback;
+}
+
 export async function registerWebRoutes(app: FastifyInstance, options: WebRouteOptions): Promise<void> {
   app.get("/api/status", async () => {
     const overview = buildDashboardOverview(options.store, {
       projectName: options.projectName,
       projectRoot: options.projectRoot,
       watcherRunning: options.getWatcherRunning(),
-      activeExplicitSessionId: options.getActiveExplicitSessionId() ?? undefined
+      trackingMode: options.getTrackingMode(),
+      activeSessionId: options.getActiveSessionId() ?? undefined
     });
     return {
       projectName: overview.projectName,
       projectRoot: overview.projectRoot,
       watcherRunning: overview.watcherRunning,
-      activeExplicitSessionId: overview.activeExplicitSessionId,
+      trackingMode: overview.trackingMode,
+      activeSessionId: overview.activeSessionId,
       counts: overview.counts,
       techStack: overview.techStack,
       lastScanSummary: overview.lastScanSummary,
@@ -66,7 +86,8 @@ export async function registerWebRoutes(app: FastifyInstance, options: WebRouteO
       projectName: options.projectName,
       projectRoot: options.projectRoot,
       watcherRunning: options.getWatcherRunning(),
-      activeExplicitSessionId: options.getActiveExplicitSessionId() ?? undefined
+      trackingMode: options.getTrackingMode(),
+      activeSessionId: options.getActiveSessionId() ?? undefined
     });
   });
 
@@ -94,11 +115,26 @@ export async function registerWebRoutes(app: FastifyInstance, options: WebRouteO
   app.get("/api/graph", async (request) => {
     const query = request.query as {
       scope?: "latest-session" | "project";
+      granularity?: GraphGranularity;
+      showHidden?: string;
+      showIsolated?: string;
+      focus?: string;
+      drilldown?: string;
       sessionId?: string;
       limitNodes?: string;
     };
     const scope = query.scope === "project" ? "project" : "latest-session";
-    const defaultLimit = scope === "latest-session" ? DEFAULT_GRAPH_LATEST_SESSION_LIMIT : DEFAULT_GRAPH_PROJECT_LIMIT;
+    const focusPath = scope === "project" && query.focus?.trim() ? query.focus.trim() : undefined;
+    const drilldownPath =
+      scope === "project" && focusPath && query.drilldown?.trim() ? query.drilldown.trim() : undefined;
+    const granularity = scope === "project" ? (focusPath ? "file" : query.granularity === "file" ? "file" : "module") : "file";
+    const showHidden = scope === "project" ? parseBoolean(query.showHidden, parseBoolean(query.showIsolated, false)) : false;
+    const defaultLimit =
+      scope === "latest-session"
+        ? DEFAULT_GRAPH_LATEST_SESSION_LIMIT
+        : granularity === "module"
+          ? DEFAULT_GRAPH_PROJECT_MODULE_LIMIT
+          : DEFAULT_GRAPH_PROJECT_LIMIT;
     const session =
       query.sessionId !== undefined
         ? options.store.getSession(query.sessionId)
@@ -107,6 +143,10 @@ export async function registerWebRoutes(app: FastifyInstance, options: WebRouteO
     return buildGraphResponse(options.store, {
       scope,
       session,
+      granularity,
+      showHidden,
+      focusPath,
+      drilldownPath,
       limitNodes: parsePositiveInt(query.limitNodes, defaultLimit)
     });
   });

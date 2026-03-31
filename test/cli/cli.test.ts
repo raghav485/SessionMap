@@ -14,13 +14,17 @@ describe("cli integration", () => {
     }
   });
 
-  test("starts, scans, explains, reports status, tracks explicit sessions, infers watcher sessions, and stops", async () => {
+  test("starts, scans, explains, auto-tracks sessions, and stops", async () => {
     projectRoot = await copyFixtureToTempDir("sample-project");
 
     const startResult = await runCli(["start", "--project-root", projectRoot], projectRoot);
     expect(startResult.stdout).toContain("SessionMap daemon running");
     expect(startResult.stdout).toContain("webUrl:");
     expect(startResult.stdout).toContain("mcpHttpUrl:");
+    expect(startResult.stdout).toContain("trackingMode: auto");
+
+    const helpResult = await runCli(["--help"], projectRoot);
+    expect(helpResult.stdout).not.toContain(" track ");
 
     const scanResult = await runCli(["scan", "--project-root", projectRoot], projectRoot);
     expect(scanResult.stdout).toContain("SessionMap scan complete");
@@ -39,27 +43,34 @@ describe("cli integration", () => {
     expect(statusResult.stdout).toContain("watcherRunning: true");
     expect(statusResult.stdout).toContain("webUrl:");
     expect(statusResult.stdout).toContain("mcpHttpUrl:");
+    expect(statusResult.stdout).toContain("trackingMode: auto");
+    expect(statusResult.stdout).toContain("activeSessionId: none");
 
-    const trackResult = await runCli(
-      ["track", "--project-root", projectRoot, "--", "node", "scripts/change-math.js"],
-      projectRoot
+    const sessionsBeforeChanges = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
+    expect(sessionsBeforeChanges.stdout).toContain("No sessions found");
+
+    await fs.writeFile(
+      path.join(projectRoot, "src", "utils", "math.ts"),
+      "export function add(left: number, right: number): number {\n  return left + right + 7;\n}\n",
+      "utf8"
     );
-    expect(trackResult.stdout).toContain("math-updated");
 
     await pollUntil(async () => {
       const sessionsResult = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
-      return sessionsResult.stdout.includes("explicit-wrapper");
+      return sessionsResult.stdout.includes("auto-daemon");
     });
 
     const sessionsResult = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
-    expect(sessionsResult.stdout).toContain("explicit-wrapper");
+    expect(sessionsResult.stdout).toContain("auto-daemon");
 
-    const explicitSessionId = sessionsResult.stdout.split(" | ")[0].trim();
+    const sessionId = sessionsResult.stdout.split(" | ")[0].trim();
     const sessionDetail = await runCli(
-      ["sessions", "--project-root", projectRoot, "--id", explicitSessionId],
+      ["sessions", "--project-root", projectRoot, "--id", sessionId],
       projectRoot
     );
-    expect(sessionDetail.stdout).toContain("agentCommand: node scripts/change-math.js");
+    expect(sessionDetail.stdout).toContain("source: auto-daemon");
+    expect(sessionDetail.stdout).toContain("actor: agent");
+    expect(sessionDetail.stdout).toContain("agentCommand: n/a");
 
     const sessionsBeforeGenerate = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
     const sessionCountBeforeGenerate = sessionsBeforeGenerate.stdout.split("\n").filter((line) => line.trim().length > 0).length;
@@ -86,14 +97,15 @@ describe("cli integration", () => {
 
     await pollUntil(async () => {
       const result = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
-      return result.stdout.includes("watcher-inferred");
+      return result.stdout.includes("auto-daemon");
     }, 8000);
 
-    const inferredSessions = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
-    expect(inferredSessions.stdout).toContain("watcher-inferred");
+    const autoSessions = await runCli(["sessions", "--project-root", projectRoot], projectRoot);
+    expect(autoSessions.stdout).toContain("auto-daemon");
 
     const finalStatus = await runCli(["status", "--project-root", projectRoot], projectRoot);
     expect(finalStatus.stdout).toContain("sessions:");
+    expect(finalStatus.stdout).toContain("trackingMode: auto");
     expect(finalStatus.stdout).toContain("lastIncrementalUpdateMs:");
     expect(finalStatus.stdout).toContain("generatedArtifacts:");
     expect(finalStatus.stdout).toContain("llmEnabled:");

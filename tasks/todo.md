@@ -1,5 +1,393 @@
 # Current Sprint
 
+## Universal Static Graph Upgrade
+- [x] Add importer-scoped workspace metadata so dependency resolution honors declared workspaces plus nearest package/app config context
+- [x] Extend project graph contracts with focused directory drilldown metadata and route support for `drilldown`
+- [x] Replace focused file spray with hierarchical directory-first drilldown while preserving top-level orchestration files only when they connect across multiple child directories
+- [x] Update dashboard routing, state, graph UI, and copy for breadcrumb/back drilldown behavior
+- [x] Expand resolver, graph-query, route, and dashboard verification for workspace resolution and hierarchical focused graphs
+- [x] Update `docs/PRD.md`, `docs/TRD.md`, and record verification plus handoff summary
+
+## Universal Static Graph Upgrade Verification
+- `npx tsc --noEmit`
+- `npm run build`
+- `npm run lint`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/engine/dependency-resolver.test.ts test/graph/graph-query.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for daemon-backed loopback startup in this environment)
+- `npx playwright test test/web/dashboard.test.ts` (required escalation for browser and loopback access in this environment)
+
+## Universal Static Graph Upgrade Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/engine/dependency-resolver.ts`
+  - `src/graph/graph-query.ts`
+  - `src/types.ts`
+  - `src/web/app/api.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/router.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `src/web/routes.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/engine/dependency-resolver.test.ts`
+  - `test/fixtures/monorepo-project/apps/api/src/index.ts`
+  - `test/fixtures/monorepo-project/apps/api/src/auth/service.ts`
+  - `test/fixtures/monorepo-project/apps/api/src/billing/service.ts`
+  - `test/fixtures/monorepo-project/apps/api/src/services/hosted.ts`
+  - `test/fixtures/monorepo-project/apps/api/tsconfig.json`
+  - `test/fixtures/monorepo-project/packages/contracts/package.json`
+  - `test/fixtures/monorepo-project/packages/contracts/src/runtime/logger.ts`
+  - `test/graph/graph-query.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - Project overview remains architecture-first, but focused graphs now drill by directory instead of exploding straight into a flat file star. Child directories render as graph nodes, root orchestration files stay visible when they connect across sibling directories, and raw files appear only at the deepest relevant layer.
+  - `/api/graph` and the dashboard hash route now support `drilldown=<relative-directory-path>` alongside `focus`, and graph responses include breadcrumb metadata so the UI can step through a focused unit cleanly.
+  - TS/JS import resolution now keeps alias resolution scoped to the config that declared it, merges inherited config chains, and respects declared package-manager workspaces when deciding which nested packages are local workspace packages.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run build`
+  - `npm run lint`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/engine/dependency-resolver.test.ts test/graph/graph-query.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (escalated for loopback startup)
+  - `npx playwright test test/web/dashboard.test.ts` (escalated for browser and loopback access)
+- Remaining risks:
+  - Focus-mode back navigation still steps through the explicit route state, so an auto-descended focus root can require one extra `Back` click before returning to the overview if the user previously drilled into a child directory.
+  - Runtime-only relationships such as HTTP, IPC, registries, and env-selected wiring remain intentionally out of scope; the graph is now more readable and more correct for static structure, but it is still strictly static.
+
+## Automatic Agent Tracking On Start
+- [x] Replace wrapper-only tracking with daemon-armed automatic agent session tracking
+- [x] Update session source/status/overview types for `auto-daemon`, `trackingMode`, and `activeSessionId`
+- [x] Remove the `track` CLI command and wrapper path
+- [x] Update session/dashboard copy and PRD/TRD docs for start-based automatic tracking
+- [x] Refresh CLI, session, MCP, web, and dashboard verification for auto tracking
+- [x] Record verification and leave handoff summary
+
+## Automatic Agent Tracking On Start Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/session/session-tracker.test.ts test/session/inferrer.test.ts test/mcp/service.test.ts test/cli/cli.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/cli/cli.test.ts test/web/routes.test.ts test/web/live-updates.test.ts test/mcp/http-server.test.ts` (required escalation for loopback daemon startup in this environment)
+- `npx playwright test test/web/dashboard.test.ts` (required escalation for browser launch and daemon-backed dashboard verification in this environment)
+
+## Automatic Agent Tracking On Start Handoff Summary
+- Files changed:
+  - `README.md`
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/cli.ts`
+  - `src/daemon/main.ts`
+  - `src/mcp/register.ts`
+  - `src/mcp/service.ts`
+  - `src/session/session-query.ts`
+  - `src/session/session-tracker.ts`
+  - `src/types.ts`
+  - `src/web/app/components/session-digest.ts`
+  - `src/web/app/views/sessions-view.ts`
+  - `src/web/routes.ts`
+  - `src/web/server.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/cli/cli.test.ts`
+  - `test/mcp/http-server.test.ts`
+  - `test/mcp/service.test.ts`
+  - `test/session/inferrer.test.ts`
+  - `test/session/session-tracker.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/live-updates.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - `sessionmap start` now arms automatic session tracking, and the first post-start file changes create `auto-daemon` sessions with actor `agent` instead of requiring `sessionmap track -- ...`.
+  - Status and overview surfaces now report `trackingMode` plus `activeSessionId`, while explicit MCP sessions temporarily override automatic tracking when active.
+  - The CLI `track` command and wrapper path were removed, and user-facing copy now tells users to start SessionMap and make changes instead of wrapping commands.
+- Docs updated:
+  - `README.md`
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/session/session-tracker.test.ts test/session/inferrer.test.ts test/mcp/service.test.ts test/cli/cli.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/cli/cli.test.ts test/web/routes.test.ts test/web/live-updates.test.ts test/mcp/http-server.test.ts` (escalated for loopback daemon startup)
+  - `npx playwright test test/web/dashboard.test.ts` (escalated for browser and loopback access)
+- Remaining risks:
+  - Legacy persisted sessions with `watcher-inferred` and `explicit-wrapper` remain readable for compatibility, so some legacy source labels still appear in backward-compat tests and old state.
+  - Runtime session attribution is still file-change-driven; runtime-only work that produces no file edits will not create an automatic session until changes hit disk.
+
+## Generic Architecture Extraction And Focus Mode
+- [x] Add a generic architecture-projection layer for package/app roots, entrypoint-root signals, and heuristic fallback grouping
+- [x] Improve TS/JS dependency resolution for nearest `tsconfig`/`jsconfig` contexts plus local workspace package imports and subpaths
+- [x] Replace project overview graph aggregation with architecture units and package-level relationship signals
+- [x] Add Project focus mode so clicking an overview module isolates that unit's internal file graph with a back control
+- [x] Update web routes, dashboard state, and graph UI for `focus`, focused file graphs, and architecture metadata
+- [x] Add resolver, graph-query, route, and dashboard verification for monorepo/package overview and focus mode
+- [x] Update `docs/PRD.md`, `docs/TRD.md`, and `tasks/lessons.md`
+- [x] Record verification and leave handoff summary
+
+## Generic Architecture Extraction And Focus Mode Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/engine/dependency-resolver.test.ts test/graph/graph-query.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for loopback daemon startup in this environment)
+- `npx playwright test test/web/dashboard.test.ts` (required escalation for Chromium launch and daemon-backed dashboard verification in this environment)
+
+## Generic Architecture Extraction And Focus Mode Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/engine/dependency-resolver.ts`
+  - `src/graph/architecture-projection.ts`
+  - `src/graph/graph-query.ts`
+  - `src/types.ts`
+  - `src/web/app/api.ts`
+  - `src/web/app/components/graph-canvas.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/router.ts`
+  - `src/web/app/state.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `src/web/routes.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/engine/dependency-resolver.test.ts`
+  - `test/fixtures/monorepo-project/*`
+  - `test/graph/graph-query.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - Project graph overview is now architecture-first and generic: it prefers discovered package/app roots and statically declared entrypoint roots, then falls back to heuristic source-grouping for simpler repos.
+  - TS/JS dependency resolution now uses nearest `tsconfig`/`jsconfig` contexts and resolves local workspace package imports and subpaths, so monorepo package edges show up as internal structure instead of external gaps.
+  - Project overview nodes now carry architecture-unit metadata, aggregated edges expose relationship-source kinds, and clicking an overview node enters Focus Mode for that unit's internal file graph.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/engine/dependency-resolver.test.ts test/graph/graph-query.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (escalated)
+  - `npx playwright test test/web/dashboard.test.ts` (escalated)
+- Remaining risks:
+  - Runtime-only architecture edges such as HTTP boundaries, message buses, registries, and env-selected wiring are still intentionally out of scope for this pass and remain future detector work.
+  - Architecture-unit detection is now signal-driven rather than repo-specific, but unusual repos without nested manifests or static entrypoint hints still depend on the fallback heuristics.
+
+## Sparse Project Graph Fallback
+- [x] Extend `GraphResponse` with sparse-fallback metadata and bounded hidden previews
+- [x] Keep project graph filtering, but add fallback detection for sparse module/file views with hidden-item previews
+- [x] Add dashboard hidden-item side panel behavior with clickable chips and fallback-aware empty state
+- [x] Update graph-query, route, and dashboard verification to cover sparse-project fallback behavior
+- [x] Update `docs/PRD.md` and `docs/TRD.md` for sparse fallback and hidden-item side lists
+- [x] Record verification and leave handoff summary
+
+## Sparse Project Graph Fallback Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts`
+- `npx playwright test test/web/dashboard.test.ts`
+
+## Sparse Project Graph Fallback Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/constants.ts`
+  - `src/graph/graph-query.ts`
+  - `src/types.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/state.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/fixtures/sparse-project/package.json`
+  - `test/fixtures/sparse-project/tsconfig.json`
+  - `test/fixtures/sparse-project/styles.css`
+  - `test/fixtures/sparse-project/src/main.ts`
+  - `test/fixtures/sparse-project/src/utils/helper.ts`
+  - `test/fixtures/sparse-project/src/services/api.ts`
+  - `test/graph/graph-query.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - Project graphs now expose `fallbackApplied` plus bounded `hiddenPreview` payloads so sparse project views can recover without dumping every hidden node into the canvas.
+  - When a filtered project graph would show fewer than three nodes, the dashboard now auto-opens a hidden-items side list, preferring isolated architecture groups first.
+  - Hidden summary chips are now clickable, switch the side-list category, and let users drill into Explorer even when the graph itself is intentionally sparse.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for loopback daemon startup in this environment)
+  - `npx playwright test test/web/dashboard.test.ts` (required escalation for Chromium launch and daemon-backed dashboard verification in this environment)
+- Remaining risks:
+  - The sparse fallback still depends on the current heuristic grouping and support-file classification, so unusual repo layouts may still need future tuning.
+  - `/api/graph` still accepts `showIsolated` as a temporary compatibility alias during the `showHidden` transition.
+
+## Project Graph Architecture View
+- [x] Replace project graph aggregation with a graph-specific architecture grouping strategy instead of raw `moduleBoundary`
+- [x] Hide support/noise files by default, preserve latest-session touched files, and expose `hiddenSummary` plus `showHidden`
+- [x] Update `/api/graph`, shared types, and dashboard state/UI from `showIsolated` to `showHidden` while accepting the old query alias temporarily
+- [x] Replace the isolated-only banner with hidden-summary chips and keep Explorer drill-in behavior for module/group and file nodes
+- [x] Update graph-query, web route, and dashboard tests for architecture-first project graphs
+- [x] Update `docs/PRD.md` and `docs/TRD.md` for the architecture-first graph behavior
+- [x] Record verification and leave handoff summary
+
+## Project Graph Architecture View Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts`
+- `npx playwright test test/web/dashboard.test.ts`
+
+## Project Graph Architecture View Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/graph/graph-query.ts`
+  - `src/types.ts`
+  - `src/web/app/api.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/state.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `src/web/routes.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/graph/graph-query.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - Project graphs now default to an architecture-first grouped view that uses graph-specific grouping instead of raw persisted `moduleBoundary` values.
+  - Project graphs hide support/noise files and untouched isolated architecture nodes by default, while latest-session touched or impacted files still remain visible.
+  - The dashboard now uses hidden-summary chips plus a `Show Hidden` toggle instead of the narrower isolated-only toggle, and module view can reveal support files alongside grouped architecture nodes when requested.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for loopback daemon startup in this environment)
+  - `npx playwright test test/web/dashboard.test.ts` (required escalation for Chromium launch and daemon-backed dashboard verification in this environment)
+- Remaining risks:
+  - The new grouping and support-file filtering are intentionally heuristic; unusual repo layouts can still need future tuning to feel perfectly architectural.
+  - `/api/graph` still accepts `showIsolated` as a temporary compatibility alias during the transition to `showHidden`.
+
+## Readable Project Graph Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for loopback daemon startup in this environment)
+- `npx playwright test test/web/dashboard.test.ts` (required escalation for loopback daemon startup and browser automation in this environment)
+
+## Readable Project Graph Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/constants.ts`
+  - `src/graph/graph-query.ts`
+  - `src/types.ts`
+  - `src/web/app/api.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/state.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `src/web/routes.ts`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+  - `test/graph/graph-query.test.ts`
+  - `test/web/dashboard.test.ts`
+  - `test/web/routes.test.ts`
+- Behavior changed:
+  - Project graphs now default to module granularity and hide ordinary isolated nodes by default, while Latest Session stays file-focused.
+  - Project graphs expose a file/module toggle plus isolated visibility toggle, and touched isolated work from the latest session remains visible even when isolated nodes are otherwise hidden.
+  - `/api/graph` now accepts `granularity` and `showIsolated`, and the dashboard shows a compact hidden-isolated summary instead of spraying disconnected nodes.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/graph/graph-query.test.ts`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (escalated)
+  - `npx playwright test test/web/dashboard.test.ts` (escalated)
+- Remaining risks:
+  - Module aggregation uses the existing `moduleBoundary` heuristic, so odd repo layouts can still group files less intuitively than a hand-authored architecture model would.
+  - The dashboard smoke covers the new project graph modes, but cross-browser interaction feel is still primarily validated through Chromium/Playwright.
+
+## Graph Navigation For Dashboard
+- [x] Add zoom and background pan support to the dependency graph canvas while preserving node drag and Explorer navigation
+- [x] Add visible graph controls for zoom in, zoom out, and fit/reset
+- [x] Preserve graph viewport state during same-scope refreshes and reset it on scope changes or when leaving the graph view
+- [x] Update dashboard styling for graph affordance and controls
+- [x] Extend dashboard verification for graph navigation and record results
+- [x] Leave handoff summary
+
+## Graph Navigation Verification
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (required escalation for loopback daemon startup in this environment)
+- `npx playwright test test/web/dashboard.test.ts` (required escalation for loopback daemon startup and browser automation in this environment)
+
+## Graph Navigation Handoff Summary
+- Files changed:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `src/web/app/components/graph-canvas.ts`
+  - `src/web/app/main.ts`
+  - `src/web/app/state.ts`
+  - `src/web/app/styles.css`
+  - `src/web/app/views/graph-view.ts`
+  - `tasks/todo.md`
+  - `test/web/dashboard.test.ts`
+- Behavior changed:
+  - The dashboard dependency graph now supports wheel/trackpad zoom, background drag pan, visible zoom controls, and fit-to-view framing.
+  - Node drag still repositions local layout, node click still drills into Explorer, and the viewport persists across same-scope refreshes.
+  - Leaving the Graph route or switching graph scope resets the next view to a fresh fit-to-view framing.
+- Docs updated:
+  - `docs/PRD.md`
+  - `docs/TRD.md`
+  - `tasks/todo.md`
+- Verification run:
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/run-vitest.mjs run --testTimeout=15000 test/web/routes.test.ts` (escalated)
+  - `npx playwright test test/web/dashboard.test.ts` (escalated)
+- Remaining risks:
+  - The dashboard browser proof covers zoom, pan, route reset, and Explorer drill-in, but cross-browser input feel is still primarily validated through Chromium/Playwright.
+  - Loopback daemon-backed web verification needs escalation in this environment, so local failures there can still be sandbox-related rather than product regressions.
+
 ## Source Install Simplification
 - [x] Replace the wrapper- and publish-first install story with a standard source install flow based on `npm install -g .`
 - [x] Remove beta-wrapper scripts, docs, and tests from the repo and package scripts
